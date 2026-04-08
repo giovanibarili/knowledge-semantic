@@ -33,6 +33,8 @@ class TestProtocol:
         names = {t["name"] for t in tools}
         assert names == {
             "knowledge_index",
+            "knowledge_write",
+            "knowledge_edit",
             "knowledge_search",
             "knowledge_glossary",
             "knowledge_remove",
@@ -104,6 +106,188 @@ class TestKnowledgeIndex:
                     "arguments": {
                         "file_path": "/nonexistent/file.md",
                         "description": "Does not exist",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert "error" in content
+
+
+class TestKnowledgeWrite:
+    def test_write_creates_file_and_indexes(self, monkeypatch, store, tmp_dir):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "subdir", "new.md")
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 50,
+                "params": {
+                    "name": "knowledge_write",
+                    "arguments": {
+                        "file_path": test_file,
+                        "content": "# New File\nContent about Datomic patterns.",
+                        "description": "New knowledge file about Datomic",
+                        "category": "pattern",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "created"
+
+        # Verify file exists on disk
+        with open(test_file, "r") as f:
+            assert "Datomic" in f.read()
+
+        # Verify searchable
+        search_resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 51,
+                "params": {
+                    "name": "knowledge_search",
+                    "arguments": {"query": "Datomic patterns"},
+                },
+            }
+        )
+        search_content = json.loads(search_resp["result"]["content"][0]["text"])
+        assert any(r["file_path"] == test_file for r in search_content["results"])
+
+    def test_write_overwrites_existing(self, monkeypatch, store, tmp_dir):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "overwrite.md")
+        # Write once
+        handle_request(
+            {
+                "method": "tools/call",
+                "id": 52,
+                "params": {
+                    "name": "knowledge_write",
+                    "arguments": {
+                        "file_path": test_file,
+                        "content": "Original content.",
+                        "description": "Original",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        # Write again
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 53,
+                "params": {
+                    "name": "knowledge_write",
+                    "arguments": {
+                        "file_path": test_file,
+                        "content": "Updated content.",
+                        "description": "Updated",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "updated"
+
+        with open(test_file, "r") as f:
+            assert f.read() == "Updated content."
+
+
+class TestKnowledgeEdit:
+    def test_edit_replaces_and_reindexes(self, monkeypatch, store, tmp_dir):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "edit.md")
+        # Create file first
+        handle_request(
+            {
+                "method": "tools/call",
+                "id": 60,
+                "params": {
+                    "name": "knowledge_write",
+                    "arguments": {
+                        "file_path": test_file,
+                        "content": "SAA handles authorization.",
+                        "description": "SAA overview",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        # Edit it
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 61,
+                "params": {
+                    "name": "knowledge_edit",
+                    "arguments": {
+                        "file_path": test_file,
+                        "old_string": "authorization",
+                        "new_string": "authorization and settlement",
+                        "description": "SAA overview with settlement",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "updated"
+
+        with open(test_file, "r") as f:
+            assert "authorization and settlement" in f.read()
+
+    def test_edit_string_not_found(self, monkeypatch, store, tmp_dir):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "edit2.md")
+        with open(test_file, "w") as f:
+            f.write("Some content.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 62,
+                "params": {
+                    "name": "knowledge_edit",
+                    "arguments": {
+                        "file_path": test_file,
+                        "old_string": "nonexistent string",
+                        "new_string": "replacement",
+                        "description": "Test",
+                        "category": "service",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert "error" in content
+
+    def test_edit_file_not_found(self, monkeypatch, store):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 63,
+                "params": {
+                    "name": "knowledge_edit",
+                    "arguments": {
+                        "file_path": "/nonexistent/file.md",
+                        "old_string": "x",
+                        "new_string": "y",
+                        "description": "Test",
                         "category": "service",
                     },
                 },

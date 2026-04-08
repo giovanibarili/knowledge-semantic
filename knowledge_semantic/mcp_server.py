@@ -42,6 +42,56 @@ def tool_index(file_path, description, category, glossary_terms=None):
     )
 
 
+def tool_write(file_path, content, description, category, glossary_terms=None):
+    """Write a knowledge file to disk and index it in ChromaDB atomically."""
+    import os
+
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        return {"error": f"Cannot write file: {e}"}
+
+    return _store.upsert(
+        file_path=file_path,
+        content=content,
+        description=description,
+        category=category,
+        glossary_terms=glossary_terms or [],
+    )
+
+
+def tool_edit(file_path, old_string, new_string, description, category, glossary_terms=None):
+    """Edit a knowledge file (string replacement) and re-index in ChromaDB atomically."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return {"error": f"File not found: {file_path}"}
+    except OSError as e:
+        return {"error": f"Cannot read file: {e}"}
+
+    if old_string not in content:
+        return {"error": f"String to replace not found in {file_path}"}
+
+    new_content = content.replace(old_string, new_string, 1)
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+    except OSError as e:
+        return {"error": f"Cannot write file: {e}"}
+
+    return _store.upsert(
+        file_path=file_path,
+        content=new_content,
+        description=description,
+        category=category,
+        glossary_terms=glossary_terms or [],
+    )
+
+
 def tool_search(query, category=None, limit=5):
     """Semantic search across indexed knowledge files."""
     results = _store.search(query=query, category=category, limit=limit)
@@ -98,6 +148,96 @@ TOOLS = {
             "required": ["file_path", "description", "category"],
         },
         "handler": tool_index,
+    },
+    "knowledge_write": {
+        "description": (
+            "Write a knowledge file to disk and auto-index in ChromaDB. "
+            "Creates or overwrites the file, then indexes with the provided metadata. "
+            "Use this instead of the Write tool for knowledge files to keep the index in sync."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Absolute path to the markdown file to write",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The full content to write to the file",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "One-line description of the file's content",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "One of: domain, service, pattern, convention, framework, infrastructure, operations, workflow, claude-code, project, memory",
+                },
+                "glossary_terms": {
+                    "type": "array",
+                    "description": "List of glossary terms found in the file",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "term": {"type": "string"},
+                            "aliases": {"type": "array", "items": {"type": "string"}},
+                            "definition": {"type": "string"},
+                        },
+                        "required": ["term"],
+                    },
+                },
+            },
+            "required": ["file_path", "content", "description", "category"],
+        },
+        "handler": tool_write,
+    },
+    "knowledge_edit": {
+        "description": (
+            "Edit a knowledge file (string replacement) and auto-re-index in ChromaDB. "
+            "Replaces the first occurrence of old_string with new_string, then re-indexes. "
+            "Use this instead of the Edit tool for knowledge files to keep the index in sync."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Absolute path to the markdown file to edit",
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "The exact string to find and replace",
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "The replacement string",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "One-line description of the file's content (after edit)",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "One of: domain, service, pattern, convention, framework, infrastructure, operations, workflow, claude-code, project, memory",
+                },
+                "glossary_terms": {
+                    "type": "array",
+                    "description": "List of glossary terms found in the file",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "term": {"type": "string"},
+                            "aliases": {"type": "array", "items": {"type": "string"}},
+                            "definition": {"type": "string"},
+                        },
+                        "required": ["term"],
+                    },
+                },
+            },
+            "required": ["file_path", "old_string", "new_string", "description", "category"],
+        },
+        "handler": tool_edit,
     },
     "knowledge_search": {
         "description": (
