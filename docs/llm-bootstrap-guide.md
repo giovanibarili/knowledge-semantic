@@ -1,14 +1,12 @@
 # LLM Bootstrap Guide
 
-This document is meant to be included in your LLM agent's system prompt or configuration file. Copy the sections you need into your `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, or `.github/copilot-instructions.md`. The text below is written for the LLM to read directly.
+You are reading this because your user sent you this link. This document tells you how to use the Knowledge Semantic MCP server — a persistent semantic search layer over a collection of markdown files. This is your long-term memory.
 
----
+Read this document fully, then follow the setup instructions. Once configured, you will be able to search, create, edit, and manage knowledge files that persist across sessions.
 
 ## Knowledge Base
 
-You have access to a persistent knowledge base through the Knowledge Semantic MCP server. This is your long-term memory — a collection of markdown files indexed with semantic embeddings. You can search by meaning, not just by filename.
-
-Knowledge files live at `~/knowledge/` (or wherever `KNOWLEDGE_PATH` is configured). The search index is stored in `.chromadb/` inside that directory and persists across sessions.
+Knowledge files are markdown documents organized in a directory (default: `~/knowledge/`, or wherever `KNOWLEDGE_PATH` is configured). The search index is stored in `.chromadb/` inside that directory and persists across sessions. Embeddings are computed automatically — you search by meaning, not by filename.
 
 ### Tools
 
@@ -59,45 +57,45 @@ This is a one-time process. On subsequent sessions, ChromaDB loads the persisted
 
 ---
 
-## Per-Tool Configuration
+## Setup
 
-The section above is the generic content. Below are instructions for adding it to specific tools.
+Ask your user to install the MCP server if it is not already available. The steps depend on which tool you are running in.
 
 ### Claude Code
 
-Add the "Knowledge Base" section above to your `CLAUDE.md` file (global at `~/.claude/CLAUDE.md` or per-project).
-
-Register the MCP server:
+Ask the user to run:
 
 ```bash
+pip install -e /path/to/knowledge-semantic
 claude mcp add --scope user knowledge-semantic -- python -m knowledge_semantic.mcp_server
 ```
 
+Then add the Tools, Rules, and Categories sections above to the user's `CLAUDE.md` (global at `~/.claude/CLAUDE.md` or per-project).
+
 ### Cursor
 
-Add the "Knowledge Base" section above to `.cursorrules` at your project root. Cursor injects this into the system prompt automatically.
+Ask the user to:
 
-Register the MCP server in Settings > MCP Servers with the command:
+1. Install: `pip install -e /path/to/knowledge-semantic`
+2. Register the MCP server in Settings > MCP Servers with the command: `python -m knowledge_semantic.mcp_server`
 
-```
-python -m knowledge_semantic.mcp_server
-```
+Then add the Tools, Rules, and Categories sections above to `.cursorrules` at the project root.
 
 ### Windsurf
 
-Add the "Knowledge Base" section above to `.windsurfrules` at your project root.
+Ask the user to:
 
-Register the MCP server in Settings > MCP with the command:
+1. Install: `pip install -e /path/to/knowledge-semantic`
+2. Register the MCP server in Settings > MCP with the command: `python -m knowledge_semantic.mcp_server`
 
-```
-python -m knowledge_semantic.mcp_server
-```
+Then add the Tools, Rules, and Categories sections above to `.windsurfrules` at the project root.
 
 ### GitHub Copilot
 
-Add the "Knowledge Base" section above to `.github/copilot-instructions.md` in your repository.
+Ask the user to:
 
-Register the MCP server in `.github/copilot-mcp.json`:
+1. Install: `pip install -e /path/to/knowledge-semantic`
+2. Add to `.github/copilot-mcp.json`:
 
 ```json
 {
@@ -110,15 +108,11 @@ Register the MCP server in `.github/copilot-mcp.json`:
 }
 ```
 
+Then add the Tools, Rules, and Categories sections above to `.github/copilot-instructions.md`.
+
 ### Environment Variables
 
-Set these if your knowledge files or ChromaDB data are not at the default locations:
+If the user's knowledge files are not at the default location (`~/knowledge`), ask them to set these environment variables in the MCP server configuration:
 
-- `KNOWLEDGE_PATH` — root directory of your knowledge files (default: `~/knowledge`)
+- `KNOWLEDGE_PATH` — root directory of the knowledge files
 - `CHROMADB_PATH` — where ChromaDB stores its data (default: `$KNOWLEDGE_PATH/.chromadb`)
-
-Example with Claude Code:
-
-```bash
-claude mcp add --scope user knowledge-semantic -e KNOWLEDGE_PATH=/path/to/knowledge -e CHROMADB_PATH=/path/to/.chromadb -- python -m knowledge_semantic.mcp_server
-```
