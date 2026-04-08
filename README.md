@@ -4,9 +4,13 @@ Semantic search MCP server for LLM coding agents. Your LLM forgets everything be
 
 ## The Problem
 
-A knowledge base of markdown files is only useful if you can find what you need. Manual navigation breaks when the wording doesn't match what you're looking for. Search "account authorization" and miss the file titled "auth-service" — because you'd need to already know the mapping.
+LLM coding agents have no long-term memory. Every session starts from zero — no knowledge of your architecture, conventions, past decisions, or domain vocabulary. The context window is large but ephemeral. When the session ends, everything the agent learned about your system vanishes.
 
-Semantic search fixes this. The embeddings understand that "account authorization" and "auth-service" live in the same neighborhood, regardless of exact wording.
+The community response has been to build a brain: structured markdown files that capture what the LLM needs to know. Conventions, service docs, glossaries, project context, runbooks — all curated by hand and fed to the agent through system prompts and config files. This works. You get persistence across sessions, and the LLM stops asking the same questions twice.
+
+But as the brain grows, a new problem emerges: finding the right file. Manual navigation through index files breaks when the wording doesn't match what you're looking for. Search "account authorization" and miss the file titled "auth-service" — because you'd need to already know the mapping. With 50+ files, the LLM spends more time navigating than reasoning.
+
+[mempalace](https://github.com/milla-jovovich/mempalace) opened the door to indexing and semantic retrieval over knowledge files. Knowledge Semantic builds on that foundation — a stripped-down MCP server where the LLM provides all the intelligence and the server handles storage and retrieval through ChromaDB embeddings. The result: your markdown brain becomes searchable by meaning, not just by filename.
 
 ## How It Works
 
