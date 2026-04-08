@@ -22,11 +22,13 @@ Any developer using an LLM coding agent (Claude Code, Cursor, Windsurf, GitHub C
 
 **Tools** — Keep the 6-tool reference. Generalize examples (replace domain-specific terms like "SAA" with universal examples like "auth-service", "deployment runbook"). Keep the code block format — it's the best part of the current README.
 
-**Quick Start** — Install + register MCP in 4 commands. `claude mcp add` as one example, with note: "see the bootstrap guide for other tools."
+**Quick Start** — Install + register MCP in 4 commands. `claude mcp add` as one example, with inline link: "for other tools, see the [bootstrap guide](docs/llm-bootstrap-guide.md)."
 
-**Knowledge Structures teaser** — Short paragraph + inline starter example (3-4 files) as teaser. Link to `docs/knowledge-structures.md`.
+**Knowledge Structures** — Dedicated section with starter tree teaser (3-4 files) + link to full guide: `docs/knowledge-structures.md`.
 
-**Bootstrap Guide teaser** — Short paragraph + link to `docs/llm-bootstrap-guide.md`. One sentence: "teach your LLM agent to use the knowledge base on every session."
+**Bootstrap Your LLM Agent** — Dedicated section with one-paragraph teaser listing supported tools + link to full guide: `docs/llm-bootstrap-guide.md`.
+
+**Linking strategy:** Both inline links in context (e.g., quick start referencing the bootstrap guide) AND dedicated teaser sections for each doc. The reader hits the links naturally while reading, and can also scan the ToC for dedicated sections.
 
 **Architecture** — Keep current section, clean internal references.
 
