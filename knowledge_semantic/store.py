@@ -92,8 +92,17 @@ class KnowledgeStore:
 
         terms = []
         for file_path, meta in zip(all_docs["ids"], all_docs["metadatas"]):
-            stored_terms = json.loads(meta.get("glossary_terms", "[]"))
+            raw = meta.get("glossary_terms", "[]")
+            try:
+                stored_terms = json.loads(raw)
+                # Unwrap multiply-encoded JSON strings
+                while isinstance(stored_terms, str):
+                    stored_terms = json.loads(stored_terms)
+            except (json.JSONDecodeError, TypeError):
+                continue
             for t in stored_terms:
+                if not isinstance(t, dict):
+                    continue
                 entry = {
                     "term": t["term"],
                     "aliases": t.get("aliases", []),
