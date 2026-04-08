@@ -1,166 +1,40 @@
 # LLM Bootstrap Guide
 
-Your LLM coding agent does not automatically know that a knowledge base exists or how to use it. You need to add instructions to its system prompt (or equivalent configuration file) so the agent discovers the MCP tools and follows the right usage patterns. This guide explains the generic pattern and provides copy-paste snippets for popular tools.
+This document is meant to be included in your LLM agent's system prompt or configuration file. Copy the sections you need into your `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, or `.github/copilot-instructions.md`. The text below is written for the LLM to read directly.
 
-## The Pattern
+---
 
-Every LLM agent configuration needs three blocks of instructions.
-
-### 1. Where the knowledge lives
-
-Tell the agent the MCP server name and the root path of knowledge files. This is how the agent knows the tools exist and where to find the underlying markdown files when it needs to read full content.
-
-```
-The Knowledge Semantic MCP server (`knowledge_search`, `knowledge_glossary`, etc.) is available.
-Knowledge files live at ~/path/to/knowledge/.
-```
-
-### 2. When to use which tool
-
-Define rules so the agent reaches for the right tool at the right time.
-
-- Use `knowledge_search(query)` before saying "I don't know." Semantic search finds relevant files even when the wording differs from what is stored.
-- Use `knowledge_glossary(term)` to look up acronyms, terms, and aliases.
-- Use `knowledge_write(path, content, description, category)` to create new knowledge files. This writes to disk AND indexes in ChromaDB in one atomic call.
-- Use `knowledge_edit(path, old_string, new_string, description, category)` to update existing knowledge files. This edits the file AND re-indexes atomically.
-- Never use raw file writes for knowledge files. If you bypass the MCP tools, the search index goes stale and results degrade silently.
-
-### 3. How to maintain the index
-
-Rules for keeping knowledge fresh over time.
-
-- All knowledge writes go through the MCP tools (`knowledge_write`, `knowledge_edit`), never raw file operations.
-- When the agent learns something reusable during a session, it should persist it via `knowledge_write`.
-- Good descriptions and accurate categories power the search. Vague metadata leads to poor retrieval.
-- Include `glossary_terms` for key terminology in each file so that `knowledge_glossary` can resolve acronyms and aliases.
-
-## Bootstrap Flow
-
-### First session (empty knowledge base)
-
-1. The LLM agent starts and the MCP server starts as a subprocess.
-2. ChromaDB is empty. All search queries return zero results.
-3. Tell the agent: "Index the knowledge base."
-4. The agent reads each markdown file, analyzes its content, and calls `knowledge_index` with a description, category, and glossary terms for each file.
-5. This is a one-time process. It takes a few minutes for around 50 files.
-
-### Subsequent sessions
-
-1. The MCP server starts and ChromaDB loads persisted data from `.chromadb/`.
-2. Search works immediately with no re-indexing needed.
-3. The agent uses `knowledge_search` to find context and `knowledge_write`/`knowledge_edit` to update files as it works.
-
-### On a fresh machine
-
-1. Clone your repo. This gets your knowledge files plus `.chromadb/` if you track it in git (or you regenerate if it is gitignored).
-2. Install knowledge-semantic: `pip install -e /path/to/knowledge-semantic`
-3. Register the MCP server with your tool (see MCP Server Registration below).
-4. If `.chromadb/` was gitignored, run a one-time "index the knowledge base" as described above.
-
-## Tool-Specific Snippets
-
-Each snippet below is complete and self-contained. Copy-paste it into the appropriate config file for your tool.
-
-### Claude Code (`CLAUDE.md`)
-
-Add this to your `CLAUDE.md` file (global at `~/.claude/CLAUDE.md` or per-project):
-
-```markdown
 ## Knowledge Base
 
-The Knowledge Semantic MCP server provides semantic search over your knowledge files.
+You have access to a persistent knowledge base through the Knowledge Semantic MCP server. This is your long-term memory — a collection of markdown files indexed with semantic embeddings. You can search by meaning, not just by filename.
 
-### MCP Tools
-- `knowledge_search(query, category?, limit?)` — semantic search across all indexed files. Returns ranked paths with scores. Use Read on returned paths for full content.
-- `knowledge_glossary(term?)` — search glossary terms and aliases. Omit term to list all.
-- `knowledge_write(file_path, content, description, category, glossary_terms?)` — create/overwrite a file and auto-index.
-- `knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms?)` — edit a file and auto-re-index.
-- `knowledge_index(file_path, description, category, glossary_terms?)` — index an existing file without modifying it.
-- `knowledge_remove(file_path)` — remove from the search index.
+Knowledge files live at `~/knowledge/` (or wherever `KNOWLEDGE_PATH` is configured). The search index is stored in `.chromadb/` inside that directory and persists across sessions.
+
+### Tools
+
+**Read tools:**
+
+- `knowledge_search(query, category?, limit?)` — semantic search across all indexed files. Returns ranked file paths with similarity scores and metadata. Read the returned paths for full content.
+- `knowledge_glossary(term?)` — search glossary terms and aliases across all indexed files. Omit `term` to list everything.
+
+**Write tools:**
+
+- `knowledge_write(file_path, content, description, category, glossary_terms?)` — create or overwrite a knowledge file and auto-index in one atomic call. The file is written to disk and indexed in ChromaDB simultaneously.
+- `knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms?)` — edit a knowledge file (string replacement) and auto-re-index. One call, both the file and the index stay in sync.
+- `knowledge_index(file_path, description, category, glossary_terms?)` — index an existing file without modifying it. Use this for bulk indexing or re-indexing.
+- `knowledge_remove(file_path)` — remove a file from the search index.
 
 ### Rules
-- Always search before saying "I don't know": `knowledge_glossary` for terms, `knowledge_search` for content
-- All knowledge file writes go through `knowledge_write` / `knowledge_edit` — never raw file operations
-- When learning something reusable, ask if the user wants to persist it
-- Categories: domain, service, pattern, convention, framework, infrastructure, operations, workflow, project, memory
-```
 
-### Cursor (`.cursorrules`)
+- Always search before saying "I don't know." Use `knowledge_glossary` for terms and acronyms, `knowledge_search` for broader queries. The semantic embeddings find relevant files even when the wording differs from what is stored.
+- All knowledge file writes go through `knowledge_write` or `knowledge_edit`. Never use raw file operations on knowledge files — the search index goes stale silently and results degrade.
+- When you learn something reusable during a session, offer to persist it via `knowledge_write`.
+- Provide good descriptions and accurate categories when indexing. Vague metadata leads to poor retrieval.
+- Include `glossary_terms` for key terminology in each file so that `knowledge_glossary` can resolve acronyms and aliases.
 
-Add this to `.cursorrules` at your project root:
+### Categories
 
-```
-# Knowledge Base
-
-You have access to the Knowledge Semantic MCP server for persistent semantic search.
-
-## Available Tools
-- knowledge_search(query, category?, limit?) — find relevant knowledge files by semantic similarity
-- knowledge_glossary(term?) — look up terms, acronyms, and aliases
-- knowledge_write(file_path, content, description, category, glossary_terms?) — create/overwrite + auto-index
-- knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms?) — edit + auto-re-index
-- knowledge_index(file_path, description, category, glossary_terms?) — index existing file
-- knowledge_remove(file_path) — remove from index
-
-## Rules
-- Search knowledge before saying "I don't know"
-- Use knowledge_glossary for acronyms and terms
-- All knowledge writes go through MCP tools, never raw file writes
-- When you learn something reusable, offer to persist via knowledge_write
-- Categories: domain, service, pattern, convention, framework, infrastructure, operations, workflow, project, memory
-```
-
-### Windsurf (`.windsurfrules`)
-
-Add this to `.windsurfrules` at your project root:
-
-```
-# Knowledge Base
-
-You have access to the Knowledge Semantic MCP server for persistent semantic search.
-
-## Available Tools
-- knowledge_search(query, category?, limit?) — find relevant knowledge files
-- knowledge_glossary(term?) — look up terms and aliases
-- knowledge_write(file_path, content, description, category, glossary_terms?) — create + auto-index
-- knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms?) — edit + auto-re-index
-- knowledge_index(file_path, description, category, glossary_terms?) — index existing file
-- knowledge_remove(file_path) — remove from index
-
-## Rules
-- Search knowledge before saying "I don't know"
-- Use knowledge_glossary for acronyms and terms
-- All knowledge writes go through MCP tools, never raw file writes
-- Offer to persist reusable learnings via knowledge_write
-- Categories: domain, service, pattern, convention, framework, infrastructure, operations, workflow, project, memory
-```
-
-### GitHub Copilot (`.github/copilot-instructions.md`)
-
-Add this to `.github/copilot-instructions.md` in your repository:
-
-```markdown
-# Knowledge Base
-
-You have access to the Knowledge Semantic MCP server for persistent semantic search over project knowledge.
-
-## Available Tools
-- `knowledge_search(query, category?, limit?)` — find relevant knowledge files by semantic similarity
-- `knowledge_glossary(term?)` — look up terms, acronyms, and aliases
-- `knowledge_write(file_path, content, description, category, glossary_terms?)` — create/overwrite + auto-index
-- `knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms?)` — edit + auto-re-index
-- `knowledge_index(file_path, description, category, glossary_terms?)` — index existing file
-- `knowledge_remove(file_path)` — remove from index
-
-## Rules
-- Search knowledge before saying "I don't know"
-- Use knowledge_glossary for acronyms and terms
-- All knowledge writes go through MCP tools, never raw file writes
-- Offer to persist reusable learnings via knowledge_write
-- Categories: domain, service, pattern, convention, framework, infrastructure, operations, workflow, project, memory
-```
-
-## Categories Reference
+Use one of these categories when indexing files:
 
 - **domain** — business domain concepts, rules, and glossary
 - **service** — microservice documentation, APIs, dependencies
@@ -173,9 +47,27 @@ You have access to the Knowledge Semantic MCP server for persistent semantic sea
 - **project** — active project context, decisions, checkpoints
 - **memory** — persistent user preferences and feedback
 
-## MCP Server Registration
+### First Session Bootstrap
+
+If the knowledge base has never been indexed (ChromaDB is empty and all searches return zero results), the user will ask you to "index the knowledge base." When this happens:
+
+1. List all markdown files in the knowledge directory.
+2. Read each file and analyze its content.
+3. Call `knowledge_index` for each file with a one-line description, the appropriate category, and any glossary terms found in the content.
+
+This is a one-time process. On subsequent sessions, ChromaDB loads the persisted index from `.chromadb/` and search works immediately.
+
+---
+
+## Per-Tool Configuration
+
+The section above is the generic content. Below are instructions for adding it to specific tools.
 
 ### Claude Code
+
+Add the "Knowledge Base" section above to your `CLAUDE.md` file (global at `~/.claude/CLAUDE.md` or per-project).
+
+Register the MCP server:
 
 ```bash
 claude mcp add --scope user knowledge-semantic -- python -m knowledge_semantic.mcp_server
@@ -183,7 +75,9 @@ claude mcp add --scope user knowledge-semantic -- python -m knowledge_semantic.m
 
 ### Cursor
 
-Open Settings, navigate to MCP Servers, and add a server with the command:
+Add the "Knowledge Base" section above to `.cursorrules` at your project root. Cursor injects this into the system prompt automatically.
+
+Register the MCP server in Settings > MCP Servers with the command:
 
 ```
 python -m knowledge_semantic.mcp_server
@@ -191,7 +85,9 @@ python -m knowledge_semantic.mcp_server
 
 ### Windsurf
 
-Open Settings, navigate to MCP, and add a server with the command:
+Add the "Knowledge Base" section above to `.windsurfrules` at your project root.
+
+Register the MCP server in Settings > MCP with the command:
 
 ```
 python -m knowledge_semantic.mcp_server
@@ -199,7 +95,9 @@ python -m knowledge_semantic.mcp_server
 
 ### GitHub Copilot
 
-Add to `.github/copilot-mcp.json` in your repository or configure in VS Code settings:
+Add the "Knowledge Base" section above to `.github/copilot-instructions.md` in your repository.
+
+Register the MCP server in `.github/copilot-mcp.json`:
 
 ```json
 {
@@ -214,7 +112,12 @@ Add to `.github/copilot-mcp.json` in your repository or configure in VS Code set
 
 ### Environment Variables
 
-Set `KNOWLEDGE_PATH` and `CHROMADB_PATH` environment variables if your knowledge files or ChromaDB data are not at the default locations. You can pass these through your MCP server configuration. For example, in Claude Code:
+Set these if your knowledge files or ChromaDB data are not at the default locations:
+
+- `KNOWLEDGE_PATH` — root directory of your knowledge files (default: `~/knowledge`)
+- `CHROMADB_PATH` — where ChromaDB stores its data (default: `$KNOWLEDGE_PATH/.chromadb`)
+
+Example with Claude Code:
 
 ```bash
 claude mcp add --scope user knowledge-semantic -e KNOWLEDGE_PATH=/path/to/knowledge -e CHROMADB_PATH=/path/to/.chromadb -- python -m knowledge_semantic.mcp_server
