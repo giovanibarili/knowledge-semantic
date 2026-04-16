@@ -38,6 +38,8 @@ class TestProtocol:
             "knowledge_search",
             "knowledge_glossary",
             "knowledge_remove",
+            "knowledge_reindex",
+            "knowledge_status",
         }
 
     def test_unknown_tool(self):
@@ -421,3 +423,86 @@ class TestKnowledgeRemove:
         )
         content = json.loads(resp["result"]["content"][0]["text"])
         assert content["status"] == "not_found"
+
+
+class TestKnowledgeReindex:
+    def test_reindex_via_mcp(self, monkeypatch, store, tmp_dir):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "reindex_test.md")
+        with open(test_file, "w") as f:
+            f.write("# Reindex Test\nContent about reindexing.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 70,
+                "params": {
+                    "name": "knowledge_reindex",
+                    "arguments": {"directory": tmp_dir},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["indexed"] == 1
+        assert content["errors"] == 0
+
+    def test_reindex_boolean_coercion(self, monkeypatch, store, tmp_dir):
+        """MCP transport may send recursive as string."""
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "coerce.md")
+        with open(test_file, "w") as f:
+            f.write("# Coerce\nTest boolean coercion.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 71,
+                "params": {
+                    "name": "knowledge_reindex",
+                    "arguments": {"directory": tmp_dir, "recursive": True},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["indexed"] >= 1
+
+
+class TestKnowledgeStatus:
+    def test_status_empty(self, monkeypatch, store):
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 80,
+                "params": {
+                    "name": "knowledge_status",
+                    "arguments": {},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["total_indexed"] == 0
+
+    def test_status_with_data(self, monkeypatch, seeded_store):
+        _patch_server(monkeypatch, seeded_store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 81,
+                "params": {
+                    "name": "knowledge_status",
+                    "arguments": {},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["total_indexed"] == 3
+        assert content["last_indexed"] is not None
