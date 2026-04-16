@@ -16,6 +16,7 @@ import sys
 import json
 import logging
 
+from .frontmatter import extract_index_metadata
 from .store import KnowledgeStore
 from .version import __version__
 
@@ -25,8 +26,12 @@ logger = logging.getLogger("knowledge_semantic")
 _store = KnowledgeStore()
 
 
-def tool_index(file_path, description, category, glossary_terms=None, project=None):
-    """Read a file and index it in ChromaDB with metadata."""
+def tool_index(file_path, description=None, category=None, glossary_terms=None, project=None):
+    """Read a file and index it in ChromaDB with metadata.
+
+    If description/category are omitted, attempts to extract them from
+    YAML frontmatter in the file. Explicit parameters always take precedence.
+    """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -35,13 +40,19 @@ def tool_index(file_path, description, category, glossary_terms=None, project=No
     except OSError as e:
         return {"error": f"Cannot read file: {e}"}
 
+    fm = extract_index_metadata(content)
+
+    effective_desc = description or (fm.get("description") if fm else None) or file_path
+    effective_cat = category or (fm.get("category") if fm else None) or "unknown"
+    effective_terms = glossary_terms or (fm.get("glossary_terms") if fm else None) or []
+
     return _store.upsert(
         file_path=file_path,
         content=content,
-        description=description,
-        category=category,
-        glossary_terms=glossary_terms or [],
-        project=project,
+        description=effective_desc,
+        category=effective_cat,
+        glossary_terms=effective_terms,
+        project=project or (fm.get("project") if fm else None),
     )
 
 
@@ -130,7 +141,8 @@ TOOLS = {
         "description": (
             "Index a knowledge file into ChromaDB with LLM-defined metadata. "
             "Reads the file content, computes embedding, stores with description, "
-            "category, and glossary terms. Updates in place if already indexed."
+            "category, and glossary terms. Updates in place if already indexed. "
+            "If description/category are omitted, extracts them from YAML frontmatter."
         ),
         "input_schema": {
             "type": "object",
@@ -141,15 +153,15 @@ TOOLS = {
                 },
                 "description": {
                     "type": "string",
-                    "description": "One-line description of the file's content",
+                    "description": "One-line description (optional — extracted from frontmatter if omitted)",
                 },
                 "category": {
                     "type": "string",
-                    "description": "One of: domain, service, pattern, convention, framework, infrastructure, operations, workflow, claude-code, project, memory",
+                    "description": "Category (optional — extracted from frontmatter if omitted). One of: domain, service, pattern, convention, framework, infrastructure, operations, workflow, claude-code, project, memory",
                 },
                 "glossary_terms": {
                     "type": "array",
-                    "description": "List of glossary terms found in the file",
+                    "description": "List of glossary terms (optional — extracted from frontmatter if omitted)",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -165,7 +177,7 @@ TOOLS = {
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
             },
-            "required": ["file_path", "description", "category"],
+            "required": ["file_path"],
         },
         "handler": tool_index,
     },

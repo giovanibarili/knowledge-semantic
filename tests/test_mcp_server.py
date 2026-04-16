@@ -95,6 +95,107 @@ class TestKnowledgeIndex:
         assert content["status"] == "created"
         assert content["terms_indexed"] == 1
 
+    def test_index_with_frontmatter(self, monkeypatch, store, tmp_dir):
+        """Index a file with frontmatter — no explicit description/category needed."""
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "fm.md")
+        with open(test_file, "w") as f:
+            f.write("---\ndescription: Diplomat architecture\ncategory: pattern\n---\n\n# Diplomat\nLayers.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 12,
+                "params": {
+                    "name": "knowledge_index",
+                    "arguments": {"file_path": test_file},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "created"
+
+        # Verify the metadata was extracted
+        search_resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 13,
+                "params": {
+                    "name": "knowledge_search",
+                    "arguments": {"query": "Diplomat architecture"},
+                },
+            }
+        )
+        results = json.loads(search_resp["result"]["content"][0]["text"])
+        top = results["results"][0]
+        assert top["description"] == "Diplomat architecture"
+        assert top["category"] == "pattern"
+
+    def test_index_explicit_overrides_frontmatter(self, monkeypatch, store, tmp_dir):
+        """Explicit params take precedence over frontmatter."""
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "override.md")
+        with open(test_file, "w") as f:
+            f.write("---\ndescription: FM description\ncategory: service\n---\n\nContent.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 14,
+                "params": {
+                    "name": "knowledge_index",
+                    "arguments": {
+                        "file_path": test_file,
+                        "description": "Explicit description",
+                        "category": "pattern",
+                    },
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "created"
+
+        search_resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 15,
+                "params": {
+                    "name": "knowledge_search",
+                    "arguments": {"query": "Explicit description"},
+                },
+            }
+        )
+        results = json.loads(search_resp["result"]["content"][0]["text"])
+        top = results["results"][0]
+        assert top["description"] == "Explicit description"
+        assert top["category"] == "pattern"
+
+    def test_index_no_frontmatter_no_params_uses_defaults(self, monkeypatch, store, tmp_dir):
+        """File without frontmatter and no explicit params uses file_path and 'unknown'."""
+        _patch_server(monkeypatch, store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        test_file = os.path.join(tmp_dir, "bare.md")
+        with open(test_file, "w") as f:
+            f.write("# Bare\nJust content, no frontmatter.")
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 16,
+                "params": {
+                    "name": "knowledge_index",
+                    "arguments": {"file_path": test_file},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["status"] == "created"
+
     def test_index_file_not_found(self, monkeypatch, store):
         _patch_server(monkeypatch, store)
         from knowledge_semantic.mcp_server import handle_request
