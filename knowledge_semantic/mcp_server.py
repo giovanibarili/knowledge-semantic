@@ -8,6 +8,8 @@ Tools:
   knowledge_search    — semantic search across indexed files
   knowledge_glossary  — list or search glossary terms
   knowledge_remove    — remove a file from the index
+  knowledge_reindex   — bulk re-index a directory of markdown files
+  knowledge_status    — report index health (stale, orphaned, totals)
 """
 
 import sys
@@ -107,6 +109,16 @@ def tool_glossary(term=None):
 def tool_remove(file_path):
     """Remove a file from the index."""
     return _store.remove(file_path)
+
+
+def tool_reindex(directory, recursive=True):
+    """Walk a directory and index/update all .md files."""
+    return _store.reindex(directory=directory, recursive=recursive)
+
+
+def tool_status():
+    """Report index health."""
+    return _store.status()
 
 
 TOOLS = {
@@ -294,6 +306,41 @@ TOOLS = {
             "required": ["file_path"],
         },
         "handler": tool_remove,
+    },
+    "knowledge_reindex": {
+        "description": (
+            "Bulk re-index a directory of markdown files. "
+            "Walks the directory, reads each .md file, and indexes or updates it in ChromaDB. "
+            "Skips files whose mtime is older than their last indexed timestamp. "
+            "Use after git pull, branch switch, or to bootstrap a new knowledge base."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string",
+                    "description": "Absolute path to the directory to scan for .md files",
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "description": "Walk subdirectories recursively (default true)",
+                },
+            },
+            "required": ["directory"],
+        },
+        "handler": tool_reindex,
+    },
+    "knowledge_status": {
+        "description": (
+            "Report index health: total indexed files, stale files (disk mtime > indexed_at), "
+            "and orphaned entries (in index but deleted from disk). "
+            "Use at session start to detect drift and decide if reindex is needed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+        "handler": tool_status,
     },
 }
 
