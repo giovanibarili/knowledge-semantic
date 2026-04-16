@@ -246,3 +246,95 @@ class TestStatus:
         result = store.status()
         assert result["stale_count"] == 1
         assert abs_path in result["stale_files"]
+
+
+class TestProjectScoping:
+    def test_upsert_with_project(self, store):
+        result = store.upsert(
+            file_path="/knowledge/offer.md",
+            content="Offer manager handles offer lifecycle.",
+            description="Offer manager overview",
+            category="service",
+            project="offer-manager",
+        )
+        assert result["status"] == "created"
+
+    def test_search_filter_by_project(self, store):
+        store.upsert(
+            file_path="/knowledge/offer.md",
+            content="Offer manager handles offer lifecycle.",
+            description="Offer manager overview",
+            category="service",
+            project="offer-manager",
+        )
+        store.upsert(
+            file_path="/knowledge/lead.md",
+            content="Lead ACH handles payment processing.",
+            description="Lead ACH payment processing",
+            category="service",
+            project="lead-ach",
+        )
+
+        results = store.search("service overview", project="offer-manager")
+        paths = [r["file_path"] for r in results]
+        assert "/knowledge/offer.md" in paths
+        assert "/knowledge/lead.md" not in paths
+
+    def test_search_without_project_returns_all(self, store):
+        store.upsert(
+            file_path="/knowledge/a.md",
+            content="Project A content about microservices.",
+            description="Project A",
+            category="service",
+            project="project-a",
+        )
+        store.upsert(
+            file_path="/knowledge/b.md",
+            content="Project B content about microservices.",
+            description="Project B",
+            category="service",
+            project="project-b",
+        )
+
+        results = store.search("microservices")
+        assert len(results) == 2
+
+    def test_search_filter_category_and_project(self, store):
+        store.upsert(
+            file_path="/knowledge/pattern.md",
+            content="Diplomat architecture pattern.",
+            description="Diplomat pattern",
+            category="pattern",
+            project="offer-manager",
+        )
+        store.upsert(
+            file_path="/knowledge/svc.md",
+            content="Offer manager service details.",
+            description="Offer service",
+            category="service",
+            project="offer-manager",
+        )
+
+        results = store.search("offer", category="pattern", project="offer-manager")
+        assert all(r["category"] == "pattern" for r in results)
+
+    def test_search_result_includes_project(self, store):
+        store.upsert(
+            file_path="/knowledge/tagged.md",
+            content="Tagged content.",
+            description="Tagged file",
+            category="service",
+            project="my-project",
+        )
+        results = store.search("tagged content")
+        assert results[0]["project"] == "my-project"
+
+    def test_search_result_omits_project_when_none(self, store):
+        store.upsert(
+            file_path="/knowledge/global.md",
+            content="Global knowledge file.",
+            description="Global file",
+            category="convention",
+        )
+        results = store.search("global knowledge")
+        assert "project" not in results[0]
