@@ -337,6 +337,8 @@ def handle_request(request):
                 "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"},
             }
         schema_props = TOOLS[tool_name]["input_schema"].get("properties", {})
+        # Strip internal MCP SDK params (e.g. __sessionId) that aren't in our schema
+        tool_args = {k: v for k, v in tool_args.items() if not k.startswith("__")}
         for key, value in list(tool_args.items()):
             prop_schema = schema_props.get(key, {})
             declared_type = prop_schema.get("type")
@@ -351,12 +353,12 @@ def handle_request(request):
                 "id": req_id,
                 "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]},
             }
-        except Exception:
+        except Exception as exc:
             logger.exception(f"Tool error in {tool_name}")
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
-                "error": {"code": -32000, "message": "Internal tool error"},
+                "error": {"code": -32000, "message": f"Internal tool error: {type(exc).__name__}: {exc}"},
             }
 
     return {
