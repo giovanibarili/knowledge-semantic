@@ -25,7 +25,7 @@ logger = logging.getLogger("knowledge_semantic")
 _store = KnowledgeStore()
 
 
-def tool_index(file_path, description, category, glossary_terms=None):
+def tool_index(file_path, description, category, glossary_terms=None, project=None):
     """Read a file and index it in ChromaDB with metadata."""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -41,10 +41,11 @@ def tool_index(file_path, description, category, glossary_terms=None):
         description=description,
         category=category,
         glossary_terms=glossary_terms or [],
+        project=project,
     )
 
 
-def tool_write(file_path, content, description, category, glossary_terms=None):
+def tool_write(file_path, content, description, category, glossary_terms=None, project=None):
     """Write a knowledge file to disk and index it in ChromaDB atomically."""
     import os
 
@@ -61,10 +62,12 @@ def tool_write(file_path, content, description, category, glossary_terms=None):
         description=description,
         category=category,
         glossary_terms=glossary_terms or [],
+        project=project,
     )
 
 
-def tool_edit(file_path, old_string, new_string, description, category, glossary_terms=None):
+def tool_edit(file_path, old_string, new_string, description, category, glossary_terms=None,
+              project=None):
     """Edit a knowledge file (string replacement) and re-index in ChromaDB atomically."""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -91,12 +94,13 @@ def tool_edit(file_path, old_string, new_string, description, category, glossary
         description=description,
         category=category,
         glossary_terms=glossary_terms or [],
+        project=project,
     )
 
 
-def tool_search(query, category=None, limit=5):
+def tool_search(query, category=None, project=None, limit=5):
     """Semantic search across indexed knowledge files."""
-    results = _store.search(query=query, category=category, limit=limit)
+    results = _store.search(query=query, category=category, project=project, limit=limit)
     return {"query": query, "results": results, "count": len(results)}
 
 
@@ -156,6 +160,10 @@ TOOLS = {
                         "required": ["term"],
                     },
                 },
+                "project": {
+                    "type": "string",
+                    "description": "Project/repo name for scoping (optional — omit for global knowledge)",
+                },
             },
             "required": ["file_path", "description", "category"],
         },
@@ -198,6 +206,10 @@ TOOLS = {
                         },
                         "required": ["term"],
                     },
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
             },
             "required": ["file_path", "content", "description", "category"],
@@ -246,6 +258,10 @@ TOOLS = {
                         "required": ["term"],
                     },
                 },
+                "project": {
+                    "type": "string",
+                    "description": "Project/repo name for scoping (optional — omit for global knowledge)",
+                },
             },
             "required": ["file_path", "old_string", "new_string", "description", "category"],
         },
@@ -267,6 +283,10 @@ TOOLS = {
                 "category": {
                     "type": "string",
                     "description": "Filter results to a specific category (optional)",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Filter results to a specific project/repo (optional — omit to search all)",
                 },
                 "limit": {
                     "type": "integer",

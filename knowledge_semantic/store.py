@@ -28,7 +28,7 @@ class KnowledgeStore:
         self._client = chromadb.PersistentClient(path=path)
         self._collection = self._client.get_or_create_collection(COLLECTION_NAME)
 
-    def upsert(self, file_path, content, description, category, glossary_terms=None):
+    def upsert(self, file_path, content, description, category, glossary_terms=None, project=None):
         """Index or update a knowledge file in ChromaDB."""
         terms = glossary_terms or []
         existing = self._collection.get(ids=[file_path])
@@ -40,6 +40,8 @@ class KnowledgeStore:
             "glossary_terms": json.dumps(terms),
             "indexed_at": datetime.now().isoformat(),
         }
+        if project:
+            metadata["project"] = project
 
         self._collection.upsert(
             ids=[file_path],
@@ -53,15 +55,23 @@ class KnowledgeStore:
             "status": "updated" if is_update else "created",
         }
 
-    def search(self, query, category=None, limit=5):
+    def search(self, query, category=None, project=None, limit=5):
         """Semantic search across indexed knowledge files."""
         kwargs = {
             "query_texts": [query],
             "n_results": limit,
             "include": ["metadatas", "distances"],
         }
+        where_clauses = []
         if category:
-            kwargs["where"] = {"category": category}
+            where_clauses.append({"category": category})
+        if project:
+            where_clauses.append({"project": project})
+
+        if len(where_clauses) == 1:
+            kwargs["where"] = where_clauses[0]
+        elif len(where_clauses) > 1:
+            kwargs["where"] = {"$and": where_clauses}
 
         results = self._collection.query(**kwargs)
 
@@ -74,15 +84,16 @@ class KnowledgeStore:
             results["metadatas"][0],
             results["distances"][0],
         ):
-            hits.append(
-                {
-                    "file_path": file_path,
-                    "similarity_score": round(1 - dist, 3),
-                    "description": meta.get("description", ""),
-                    "category": meta.get("category", ""),
-                    "glossary_terms": json.loads(meta.get("glossary_terms", "[]")),
-                }
-            )
+            hit = {
+                "file_path": file_path,
+                "similarity_score": round(1 - dist, 3),
+                "description": meta.get("description", ""),
+                "category": meta.get("category", ""),
+                "glossary_terms": json.loads(meta.get("glossary_terms", "[]")),
+            }
+            if meta.get("project"):
+                hit["project"] = meta["project"]
+            hits.append(hit)
 
         return hits
 
