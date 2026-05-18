@@ -4,40 +4,17 @@
   import { EditorView, lineNumbers, keymap } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
-  import { putFile } from "../api";
   import {
     currentFile,
     dirty,
     editorContent,
-    saveStatus,
     syncScroll,
-    theme,
   } from "../stores";
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
-  let saveTimer: number | null = null;
   let currentPath: string | null = null;
   let suppressNextScroll = false;
-
-  function scheduleSave(content: string) {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveStatus.set("editing");
-    saveTimer = window.setTimeout(() => doSave(content), 1000);
-  }
-
-  async function doSave(content: string) {
-    if (!currentPath) return;
-    saveStatus.set("saving");
-    try {
-      await putFile(currentPath, content);
-      dirty.set(false);
-      saveStatus.set("indexed");
-    } catch (e) {
-      console.error(e);
-      saveStatus.set("error");
-    }
-  }
 
   function onScroll() {
     if (!view) return;
@@ -65,17 +42,30 @@
             const doc = u.state.doc.toString();
             editorContent.set(doc);
             dirty.set(true);
-            scheduleSave(doc);
           }
         }),
         EditorView.domEventHandlers({ scroll: onScroll }),
         EditorView.theme({
-          "&": { height: "100%", fontSize: "13px", background: "var(--bg)" },
-          ".cm-scroller": { fontFamily: "ui-monospace, Menlo, monospace" },
-          ".cm-content": { color: "var(--fg)" },
-          ".cm-gutters": { background: "var(--bg-sunken)", color: "var(--fg-muted)", border: "none" },
+          "&": { height: "100%", fontSize: "13.5px", background: "var(--bg-sunken)" },
+          ".cm-scroller": {
+            fontFamily: "var(--font-mono)",
+            lineHeight: "1.6",
+            padding: "32px 28px",
+          },
+          ".cm-content": { color: "var(--fg)", caretColor: "var(--accent)" },
+          ".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "1.5px" },
+          ".cm-gutters": {
+            background: "var(--bg-sunken)",
+            color: "var(--fg-muted)",
+            border: "none",
+            fontFamily: "var(--font-mono)",
+            paddingRight: "12px",
+          },
+          ".cm-gutterElement": { padding: "0 4px 0 6px" },
           ".cm-activeLine": { background: "transparent" },
-          ".cm-activeLineGutter": { background: "transparent" },
+          ".cm-activeLineGutter": { background: "transparent", color: "var(--accent)" },
+          ".cm-selectionBackground, ::selection": { background: "var(--accent-soft) !important" },
+          ".cm-line": { padding: "0 2px" },
         }),
       ],
     });
@@ -88,7 +78,6 @@
     view.setState(buildState(file.content));
     editorContent.set(file.content);
     dirty.set(false);
-    saveStatus.set("idle");
   });
 
   const unsubScroll = syncScroll.subscribe((sig) => {
@@ -100,9 +89,6 @@
     scroller.scrollTop = sig.ratio * max;
   });
 
-  // Re-theme on theme change — CodeMirror picks up CSS vars automatically.
-  const unsubTheme = theme.subscribe(() => {});
-
   onMount(() => {
     view = new EditorView({ state: buildState(""), parent: host });
   });
@@ -110,9 +96,7 @@
   onDestroy(() => {
     unsubFile();
     unsubScroll();
-    unsubTheme();
     view?.destroy();
-    if (saveTimer) clearTimeout(saveTimer);
   });
 </script>
 
@@ -122,7 +106,7 @@
   .editor {
     height: 100%;
     overflow: hidden;
-    background: var(--bg);
+    background: var(--bg-sunken);
   }
   .editor :global(.cm-editor) {
     height: 100%;

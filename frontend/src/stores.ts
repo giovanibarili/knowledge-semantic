@@ -6,8 +6,8 @@ export const currentFile = writable<FileResponse | null>(null);
 export const editorContent = writable<string>("");
 export const dirty = writable<boolean>(false);
 
-export type SaveStatus = "idle" | "editing" | "saving" | "indexed" | "error";
-export const saveStatus = writable<SaveStatus>("idle");
+export type SaveStatus = "clean" | "dirty" | "saving" | "saved" | "error";
+export const saveStatus = writable<SaveStatus>("clean");
 
 export const totalIndexed = writable<number>(0);
 
