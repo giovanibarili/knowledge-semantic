@@ -117,6 +117,22 @@ Teach your LLM agent to use the knowledge base on every session. The guide expla
 
 Full guide: [docs/llm-bootstrap-guide.md](docs/llm-bootstrap-guide.md)
 
+## Web UI (optional)
+
+A local web app for browsing and editing your knowledge base. Two panes: a CodeMirror markdown editor and a live HTML preview, with sync-scroll between them. A collapsible file tree on the left lets you jump between notes. Light/dark theme toggle. Edits auto-save and reindex through the same `KnowledgeStore` the MCP server uses — the index stays in sync without any extra step.
+
+```bash
+# Install with the UI extra
+pip install -e ".[ui]"
+
+# Launch — opens http://localhost:7878 in your browser
+kb-ui
+```
+
+The UI honors the same `KNOWLEDGE_PATH` and `CHROMADB_PATH` env vars as the MCP server, so it picks up whatever knowledge base you already have configured.
+
+Full guide: [docs/web-ui.md](docs/web-ui.md)
+
 ## Architecture
 
 ```
@@ -125,12 +141,22 @@ knowledge_semantic/
 ├── __main__.py         ← entry point: python -m knowledge_semantic.mcp_server
 ├── version.py          ← single source of truth for version
 ├── store.py            ← ChromaDB wrapper (upsert, search, glossary, remove)
-└── mcp_server.py       ← JSON-RPC dispatch + 6 tool handlers
+├── mcp_server.py       ← JSON-RPC dispatch + 6 tool handlers
+├── frontmatter.py      ← YAML frontmatter parser
+└── ui/                 ← optional web UI (FastAPI + Svelte SPA)
+    ├── app.py          ← FastAPI factory
+    ├── __main__.py     ← kb-ui CLI entry
+    ├── config.py       ← env-driven config (KNOWLEDGE_PATH, CHROMADB_PATH)
+    ├── routes/         ← /api/tree, /api/file, /api/status
+    ├── services/       ← KnowledgeStore singleton, safe tree walker
+    └── static/         ← prebuilt Svelte bundle (frontend/ source)
 
 tests/
 ├── conftest.py         ← fixtures with isolated ChromaDB instances
-├── test_store.py       ← 13 tests for the store module
-└── test_mcp_server.py  ← 19 tests for MCP protocol and tools
+├── test_store.py       ← tests for the store module
+├── test_mcp_server.py  ← tests for MCP protocol and tools
+├── test_frontmatter.py ← tests for frontmatter parsing
+└── test_ui.py          ← tests for web UI routes
 ```
 
 ## Development
@@ -142,9 +168,12 @@ pytest tests/ -v
 # Lint
 ruff check knowledge_semantic/ tests/
 ruff format --check knowledge_semantic/ tests/
+
+# Build the web UI bundle (optional, only if you edit frontend/)
+cd frontend && npm install && npm run build
 ```
 
-32 tests covering all 6 tools, the ChromaDB store, MCP protocol dispatch, type coercion, and error paths.
+Tests cover all MCP tools, the ChromaDB store, MCP protocol dispatch, frontmatter parsing, web UI routes, type coercion, and error paths.
 
 ## License
 
