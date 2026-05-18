@@ -180,19 +180,19 @@
 
 <style>
   :global(:root) {
-    /* parchment palette — light theme */
-    --bg: #f6f1e7;
-    --bg-elev: #fbf8f1;
-    --bg-sunken: #ede4d2;
-    --fg: #2c2418;
-    --fg-muted: #7d6f57;
-    --border: #d4c8b0;
-    --rule: #a89878;
-    --accent: #7a2e1f;
-    --accent-soft: #7a2e1f1a;
-    --status-ok: #4a6741;
+    /* paper-with-purple — light theme (Nubank-aligned) */
+    --bg: #f5f2eb;
+    --bg-elev: #fbf9f3;
+    --bg-sunken: #ebe5d6;
+    --fg: #1f1a2c;
+    --fg-muted: #6e6580;
+    --border: #d6cebe;
+    --rule: #a89c87;
+    --accent: #820ad1;
+    --accent-soft: #820ad114;
+    --status-ok: #3d6b3a;
     --status-warn: #8a5a1a;
-    --status-err: #8a2a2a;
+    --status-err: #8a2a4a;
 
     --font-serif:
       "Fraunces", "Source Serif 4", Georgia, "Iowan Old Style", serif;
@@ -200,19 +200,19 @@
       "JetBrains Mono", "Berkeley Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   }
   :global(:root[data-theme="dark"]) {
-    /* lamp-lit reading — dark theme */
-    --bg: #1c1813;
-    --bg-elev: #221d16;
-    --bg-sunken: #15110c;
-    --fg: #e8dcc0;
-    --fg-muted: #9a8d75;
-    --border: #3a3025;
-    --rule: #5a4a35;
-    --accent: #d4a574;
-    --accent-soft: #d4a5741a;
-    --status-ok: #a8c192;
+    /* deep aubergine library — dark theme (Nubank-aligned) */
+    --bg: #15101d;
+    --bg-elev: #1c1626;
+    --bg-sunken: #0e0917;
+    --fg: #ece4d4;
+    --fg-muted: #9a8fb0;
+    --border: #2e2638;
+    --rule: #4a4055;
+    --accent: #a974ff;
+    --accent-soft: #a974ff1c;
+    --status-ok: #a8d4a0;
     --status-warn: #e5b870;
-    --status-err: #e09090;
+    --status-err: #e090a8;
   }
   :global(html, body, #app) {
     height: 100%;

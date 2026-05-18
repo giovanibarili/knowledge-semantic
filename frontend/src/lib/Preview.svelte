@@ -133,18 +133,6 @@
     color: var(--fg);
   }
 
-  /* Drop cap on the first paragraph */
-  .prose :global(> p:first-of-type::first-letter),
-  .prose :global(> h1 + p::first-letter) {
-    font-family: var(--font-serif);
-    font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 60;
-    font-size: 3.4em;
-    float: left;
-    line-height: 0.85;
-    padding: 0.08em 0.12em 0 0;
-    color: var(--accent);
-  }
-
   .prose :global(p) {
     margin: 0 0 1em;
   }
