@@ -115,6 +115,14 @@ def tool_search(query, category=None, project=None, limit=5):
     return {"query": query, "results": results, "count": len(results)}
 
 
+def tool_hybrid_search(query, category=None, project=None, limit=5):
+    """Hybrid (vector + BM25, fused via RRF) search across indexed knowledge."""
+    results = _store.hybrid_search(
+        query=query, category=category, project=project, limit=limit,
+    )
+    return {"query": query, "results": results, "count": len(results)}
+
+
 def tool_glossary(term=None):
     """List or search glossary terms."""
     terms = _store.glossary(term=term)
@@ -308,6 +316,42 @@ TOOLS = {
             "required": ["query"],
         },
         "handler": tool_search,
+    },
+    "knowledge_hybrid_search": {
+        "description": (
+            "Hybrid semantic + lexical (BM25) search across indexed knowledge files. "
+            "Vector retrieves paraphrases and conceptual matches; BM25 retrieves exact "
+            "identifiers, acronyms, and kebab-case symbols. Results are fused via "
+            "Reciprocal Rank Fusion (RRF) — robust to score-scale mismatch. Each hit "
+            "is decorated with rrf_score, vec_rank, bm25_rank, and an in_both flag "
+            "(True when both retrievers agreed). Prefer this over knowledge_search "
+            "when the query mixes prose with exact names (e.g. 'how compose-page-tree "
+            "dispatches'), or when knowledge_search returns weak (similarity < 0.3) "
+            "top hits."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query (natural language or mixed with exact identifiers)",
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Filter results to a specific category (optional)",
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Filter results to a specific project/repo (optional)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results to return (default 5)",
+                },
+            },
+            "required": ["query"],
+        },
+        "handler": tool_hybrid_search,
     },
     "knowledge_glossary": {
         "description": (

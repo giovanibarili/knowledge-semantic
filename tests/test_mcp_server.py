@@ -36,6 +36,7 @@ class TestProtocol:
             "knowledge_write",
             "knowledge_edit",
             "knowledge_search",
+            "knowledge_hybrid_search",
             "knowledge_glossary",
             "knowledge_remove",
             "knowledge_reindex",
@@ -452,6 +453,46 @@ class TestKnowledgeSearch:
         )
         content = json.loads(resp["result"]["content"][0]["text"])
         assert len(content["results"]) <= 1
+
+
+class TestKnowledgeHybridSearch:
+    def test_hybrid_search_via_mcp(self, monkeypatch, seeded_store):
+        _patch_server(monkeypatch, seeded_store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 23,
+                "params": {
+                    "name": "knowledge_hybrid_search",
+                    "arguments": {"query": "authorization engine"},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert content["count"] >= 1
+        # Each hit must carry the fusion metadata
+        for r in content["results"]:
+            assert "rrf_score" in r
+            assert "in_both" in r
+
+    def test_hybrid_search_filters_apply(self, monkeypatch, seeded_store):
+        _patch_server(monkeypatch, seeded_store)
+        from knowledge_semantic.mcp_server import handle_request
+
+        resp = handle_request(
+            {
+                "method": "tools/call",
+                "id": 24,
+                "params": {
+                    "name": "knowledge_hybrid_search",
+                    "arguments": {"query": "layers", "category": "pattern"},
+                },
+            }
+        )
+        content = json.loads(resp["result"]["content"][0]["text"])
+        assert all(r["category"] == "pattern" for r in content["results"])
 
 
 class TestKnowledgeGlossary:
