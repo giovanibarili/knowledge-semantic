@@ -34,14 +34,14 @@ class TestUpsert:
     def test_upsert_with_glossary_terms(self, store):
         result = store.upsert(
             file_path="/knowledge/test.md",
-            content="SAA handles transactions.",
-            description="SAA overview",
+            content="AUTH handles requests.",
+            description="AUTH overview",
             category="service",
             glossary_terms=[
                 {
-                    "term": "SAA",
-                    "aliases": ["simple-account-authorizer"],
-                    "definition": "Auth engine",
+                    "term": "AUTH",
+                    "aliases": ["auth-service"],
+                    "definition": "Authorization service",
                 },
             ],
         )
@@ -61,11 +61,11 @@ class TestSearch:
         assert all(r["category"] == "pattern" for r in results)
 
     def test_search_with_limit(self, seeded_store):
-        results = seeded_store.search("SAA", limit=1)
+        results = seeded_store.search("AUTH", limit=1)
         assert len(results) <= 1
 
     def test_search_returns_glossary_terms(self, seeded_store):
-        results = seeded_store.search("authorization engine")
+        results = seeded_store.search("authorization service")
         top = results[0]
         assert "glossary_terms" in top
 
@@ -76,25 +76,25 @@ class TestGlossary:
         assert len(terms) >= 3
 
     def test_glossary_search_by_term(self, seeded_store):
-        terms = seeded_store.glossary(term="SAA")
-        assert any(t["term"] == "SAA" for t in terms)
+        terms = seeded_store.glossary(term="AUTH")
+        assert any(t["term"] == "AUTH" for t in terms)
 
     def test_glossary_search_by_alias(self, seeded_store):
-        terms = seeded_store.glossary(term="simple-account")
+        terms = seeded_store.glossary(term="auth-service")
         assert len(terms) >= 1
 
     def test_glossary_case_insensitive(self, seeded_store):
-        terms = seeded_store.glossary(term="saa")
-        assert any(t["term"] == "SAA" for t in terms)
+        terms = seeded_store.glossary(term="auth")
+        assert any(t["term"] == "AUTH" for t in terms)
 
 
 class TestRemove:
     def test_remove_existing(self, seeded_store):
-        result = seeded_store.remove("/knowledge/services/saa.md")
+        result = seeded_store.remove("/knowledge/services/auth.md")
         assert result["status"] == "removed"
-        results = seeded_store.search("SAA authorization")
+        results = seeded_store.search("AUTH authorization")
         paths = [r["file_path"] for r in results]
-        assert "/knowledge/services/saa.md" not in paths
+        assert "/knowledge/services/auth.md" not in paths
 
     def test_remove_nonexistent(self, store):
         result = store.remove("/nonexistent.md")
@@ -251,34 +251,34 @@ class TestStatus:
 class TestProjectScoping:
     def test_upsert_with_project(self, store):
         result = store.upsert(
-            file_path="/knowledge/offer.md",
-            content="Offer manager handles offer lifecycle.",
-            description="Offer manager overview",
+            file_path="/knowledge/orders.md",
+            content="Orders service handles order lifecycle.",
+            description="Orders service overview",
             category="service",
-            project="offer-manager",
+            project="orders-svc",
         )
         assert result["status"] == "created"
 
     def test_search_filter_by_project(self, store):
         store.upsert(
-            file_path="/knowledge/offer.md",
-            content="Offer manager handles offer lifecycle.",
-            description="Offer manager overview",
+            file_path="/knowledge/orders.md",
+            content="Orders service handles order lifecycle.",
+            description="Orders service overview",
             category="service",
-            project="offer-manager",
+            project="orders-svc",
         )
         store.upsert(
-            file_path="/knowledge/lead.md",
-            content="Lead ACH handles payment processing.",
-            description="Lead ACH payment processing",
+            file_path="/knowledge/billing.md",
+            content="Billing service handles payment processing.",
+            description="Billing payment processing",
             category="service",
-            project="lead-ach",
+            project="billing-svc",
         )
 
-        results = store.search("service overview", project="offer-manager")
+        results = store.search("service overview", project="orders-svc")
         paths = [r["file_path"] for r in results]
-        assert "/knowledge/offer.md" in paths
-        assert "/knowledge/lead.md" not in paths
+        assert "/knowledge/orders.md" in paths
+        assert "/knowledge/billing.md" not in paths
 
     def test_search_without_project_returns_all(self, store):
         store.upsert(
@@ -302,20 +302,20 @@ class TestProjectScoping:
     def test_search_filter_category_and_project(self, store):
         store.upsert(
             file_path="/knowledge/pattern.md",
-            content="Diplomat architecture pattern.",
-            description="Diplomat pattern",
+            content="Layered architecture pattern.",
+            description="Layered pattern",
             category="pattern",
-            project="offer-manager",
+            project="orders-svc",
         )
         store.upsert(
             file_path="/knowledge/svc.md",
-            content="Offer manager service details.",
-            description="Offer service",
+            content="Orders service details.",
+            description="Orders service",
             category="service",
-            project="offer-manager",
+            project="orders-svc",
         )
 
-        results = store.search("offer", category="pattern", project="offer-manager")
+        results = store.search("orders", category="pattern", project="orders-svc")
         assert all(r["category"] == "pattern" for r in results)
 
     def test_search_result_includes_project(self, store):

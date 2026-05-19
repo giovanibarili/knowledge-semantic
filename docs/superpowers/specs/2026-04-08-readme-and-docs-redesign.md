@@ -20,7 +20,7 @@ Any developer using an LLM coding agent (Claude Code, Cursor, Windsurf, GitHub C
 
 **How It Works** — Three layers (MCP Server, ChromaDB, LLM Client) with generic language. "Your LLM agent" instead of "Claude Code." Push-model explanation: LLM provides intelligence, server is dumb storage.
 
-**Tools** — Keep the 6-tool reference. Generalize examples (replace domain-specific terms like "SAA" with universal examples like "auth-service", "deployment runbook"). Keep the code block format — it's the best part of the current README.
+**Tools** — Keep the 6-tool reference. Generalize examples (replace any domain-specific acronyms with universal examples like "auth-service", "deployment runbook"). Keep the code block format — it's the best part of the current README.
 
 **Quick Start** — Install + register MCP in 4 commands. `claude mcp add` as one example, with inline link: "for other tools, see the [bootstrap guide](docs/llm-bootstrap-guide.md)."
 
@@ -139,7 +139,7 @@ Each snippet is self-contained: copy, paste into the config file, and the agent 
 
 ## What to remove from the current README
 
-- All references to Nubank, SAA, dotfiles, Nu CLI
+- All references to company-specific names, internal service acronyms, internal dotfiles paths, or internal CLI tooling
 - Fork/mempalace mention from the top (move to footer attribution)
 - Internal PyPI registry note ("use public PyPI")
 - Specific file paths like `~/dev/personal/claude-dotfiles/knowledge`

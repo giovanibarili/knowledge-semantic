@@ -69,7 +69,7 @@ class TestKnowledgeIndex:
 
         test_file = os.path.join(tmp_dir, "test.md")
         with open(test_file, "w") as f:
-            f.write("# Test\nThis is about SAA authorization.")
+            f.write("# Test\nThis is about AUTH authorization.")
 
         resp = handle_request(
             {
@@ -79,13 +79,13 @@ class TestKnowledgeIndex:
                     "name": "knowledge_index",
                     "arguments": {
                         "file_path": test_file,
-                        "description": "Test file about SAA",
+                        "description": "Test file about AUTH",
                         "category": "service",
                         "glossary_terms": [
                             {
-                                "term": "SAA",
-                                "aliases": ["simple-account-authorizer"],
-                                "definition": "Auth engine",
+                                "term": "AUTH",
+                                "aliases": ["auth-service"],
+                                "definition": "Authorization service",
                             },
                         ],
                     },
@@ -320,8 +320,8 @@ class TestKnowledgeEdit:
                     "name": "knowledge_write",
                     "arguments": {
                         "file_path": test_file,
-                        "content": "SAA handles authorization.",
-                        "description": "SAA overview",
+                        "content": "AUTH handles authorization.",
+                        "description": "AUTH overview",
                         "category": "service",
                     },
                 },
@@ -338,7 +338,7 @@ class TestKnowledgeEdit:
                         "file_path": test_file,
                         "old_string": "authorization",
                         "new_string": "authorization and settlement",
-                        "description": "SAA overview with settlement",
+                        "description": "AUTH overview with settlement",
                         "category": "service",
                     },
                 },
@@ -447,7 +447,7 @@ class TestKnowledgeSearch:
                 "id": 22,
                 "params": {
                     "name": "knowledge_search",
-                    "arguments": {"query": "SAA", "limit": "1"},
+                    "arguments": {"query": "AUTH", "limit": "1"},
                 },
             }
         )
@@ -523,12 +523,12 @@ class TestKnowledgeGlossary:
                 "id": 31,
                 "params": {
                     "name": "knowledge_glossary",
-                    "arguments": {"term": "SAA"},
+                    "arguments": {"term": "AUTH"},
                 },
             }
         )
         content = json.loads(resp["result"]["content"][0]["text"])
-        assert any(t["term"] == "SAA" for t in content["terms"])
+        assert any(t["term"] == "AUTH" for t in content["terms"])
 
 
 class TestKnowledgeRemove:
@@ -542,7 +542,7 @@ class TestKnowledgeRemove:
                 "id": 40,
                 "params": {
                     "name": "knowledge_remove",
-                    "arguments": {"file_path": "/knowledge/services/saa.md"},
+                    "arguments": {"file_path": "/knowledge/services/auth.md"},
                 },
             }
         )
