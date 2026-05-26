@@ -12,6 +12,8 @@ from datetime import datetime
 
 import chromadb
 
+from .frontmatter import extract_index_metadata, parse_frontmatter
+
 logger = logging.getLogger("knowledge_semantic")
 
 COLLECTION_NAME = "knowledge"
@@ -143,9 +145,12 @@ class KnowledgeStore:
     def reindex(self, directory, recursive=True):
         """Walk a directory and index/update all .md files.
 
-        Files are indexed with minimal metadata (description from first line,
-        category "unknown"). Files already indexed whose mtime is older than
-        indexed_at are skipped.
+        For each file: if YAML frontmatter is present, extract description,
+        category, glossary_terms, and project from it via
+        ``frontmatter.extract_index_metadata``. Otherwise (or when a field is
+        missing), fall back to the first heading as the description and
+        ``category="unknown"``. Files already indexed whose mtime is older
+        than indexed_at are skipped.
 
         Returns counts of indexed, skipped, and errored files.
         """
@@ -188,20 +193,26 @@ class KnowledgeStore:
                     errors.append({"file_path": abs_path, "reason": str(e)})
                     continue
 
-                first_line = ""
-                for line in content.splitlines():
-                    stripped = line.strip().lstrip("#").strip()
-                    if stripped:
-                        first_line = stripped
-                        break
-                description = first_line[:200] if first_line else fname
+                metadata = extract_index_metadata(content) or {}
+                _, body = parse_frontmatter(content)
+
+                description = metadata.get("description")
+                if not description:
+                    first_line = ""
+                    for line in body.splitlines():
+                        stripped = line.strip().lstrip("#").strip()
+                        if stripped:
+                            first_line = stripped
+                            break
+                    description = first_line[:200] if first_line else fname
 
                 self.upsert(
                     file_path=abs_path,
                     content=content,
                     description=description,
-                    category="unknown",
-                    glossary_terms=[],
+                    category=metadata.get("category") or "unknown",
+                    glossary_terms=metadata.get("glossary_terms"),
+                    project=metadata.get("project"),
                 )
                 indexed.append(abs_path)
 

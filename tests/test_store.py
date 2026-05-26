@@ -195,6 +195,47 @@ class TestReindex:
         results = store.search("My Great Title")
         assert any("My Great Title" in r["description"] for r in results)
 
+    def test_reindex_extracts_frontmatter_metadata(self, store, tmp_dir):
+        import os
+
+        fpath = os.path.join(tmp_dir, "with_frontmatter.md")
+        with open(fpath, "w") as f:
+            f.write(
+                "---\n"
+                "description: A clear description from frontmatter\n"
+                "category: runbook\n"
+                "project: example-project\n"
+                "---\n"
+                "# Heading\n"
+                "Body content here.\n"
+            )
+
+        store.reindex(tmp_dir)
+        results = store.search("clear description", limit=1)
+        assert len(results) >= 1
+        assert results[0]["description"] == "A clear description from frontmatter"
+        assert results[0]["category"] == "runbook"
+        assert results[0]["project"] == "example-project"
+
+    def test_reindex_skips_frontmatter_delimiter_when_falling_back(self, store, tmp_dir):
+        import os
+
+        fpath = os.path.join(tmp_dir, "no_description.md")
+        with open(fpath, "w") as f:
+            f.write(
+                "---\n"
+                "category: runbook\n"
+                "---\n"
+                "# Real Heading\n"
+                "Body.\n"
+            )
+
+        store.reindex(tmp_dir)
+        results = store.search("Real Heading", limit=1)
+        assert len(results) >= 1
+        assert results[0]["description"] == "Real Heading"
+        assert "---" not in results[0]["description"]
+
 
 class TestStatus:
     def test_status_empty_index(self, store):
