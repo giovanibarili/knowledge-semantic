@@ -6,19 +6,19 @@ from knowledge_semantic.frontmatter import extract_index_metadata, parse_frontma
 class TestParseFrontmatter:
     def test_basic_frontmatter(self):
         content = """---
-description: SAA authorization engine overview
+description: AUTH service overview
 category: service
 ---
 
-# SAA
+# AUTH
 
 Content here.
 """
         meta, body = parse_frontmatter(content)
         assert meta is not None
-        assert meta["description"] == "SAA authorization engine overview"
+        assert meta["description"] == "AUTH service overview"
         assert meta["category"] == "service"
-        assert "# SAA" in body
+        assert "# AUTH" in body
 
     def test_no_frontmatter(self):
         content = "# Just a heading\n\nNo frontmatter here."
@@ -31,15 +31,15 @@ Content here.
 description: Domain glossary
 category: domain
 glossary_terms:
-  - SAA
-  - SAM
-  - GDM
+  - AUTH
+  - UMS
+  - PMS
 ---
 
 Body.
 """
         meta, body = parse_frontmatter(content)
-        assert meta["glossary_terms"] == ["SAA", "SAM", "GDM"]
+        assert meta["glossary_terms"] == ["AUTH", "UMS", "PMS"]
 
     def test_frontmatter_with_multiline_description(self):
         content = """---
@@ -57,15 +57,15 @@ Body.
 
     def test_frontmatter_with_project(self):
         content = """---
-description: Offer flow decisions
+description: Order flow decisions
 category: decisions
-project: offer-manager
+project: demo-service
 ---
 
 Body.
 """
         meta, _body = parse_frontmatter(content)
-        assert meta["project"] == "offer-manager"
+        assert meta["project"] == "demo-service"
 
     def test_frontmatter_with_null_values(self):
         content = """---
@@ -95,34 +95,34 @@ Body.
         content = """---
 description: Test
 category: service
-glossary_terms: [SAA, SAM, GDM]
+glossary_terms: [AUTH, UMS, PMS]
 ---
 
 Body.
 """
         meta, _body = parse_frontmatter(content)
-        assert meta["glossary_terms"] == ["SAA", "SAM", "GDM"]
+        assert meta["glossary_terms"] == ["AUTH", "UMS", "PMS"]
 
 
 class TestExtractIndexMetadata:
     def test_full_metadata(self):
         content = """---
-description: SAA overview
+description: AUTH overview
 category: service
-project: offer-manager
+project: demo-service
 glossary_terms:
-  - SAA
-  - SAM
+  - AUTH
+  - UMS
 ---
 
 Body.
 """
         result = extract_index_metadata(content)
-        assert result["description"] == "SAA overview"
+        assert result["description"] == "AUTH overview"
         assert result["category"] == "service"
-        assert result["project"] == "offer-manager"
+        assert result["project"] == "demo-service"
         assert len(result["glossary_terms"]) == 2
-        assert result["glossary_terms"][0] == {"term": "SAA"}
+        assert result["glossary_terms"][0] == {"term": "AUTH"}
 
     def test_partial_metadata(self):
         content = """---
@@ -154,17 +154,17 @@ Body.
 description: Glossary file
 category: domain
 glossary_terms:
-  - term: SAA
-    aliases: [simple-account-authorizer]
-    definition: Authorization engine
-  - term: SAM
-    definition: Account manager
+  - term: AUTH
+    aliases: [auth-service]
+    definition: Authorization service
+  - term: UMS
+    definition: User management
 ---
 
 Body.
 """
         result = extract_index_metadata(content)
         assert len(result["glossary_terms"]) == 2
-        assert result["glossary_terms"][0]["term"] == "SAA"
-        assert result["glossary_terms"][0]["aliases"] == ["simple-account-authorizer"]
-        assert result["glossary_terms"][1]["term"] == "SAM"
+        assert result["glossary_terms"][0]["term"] == "AUTH"
+        assert result["glossary_terms"][0]["aliases"] == ["auth-service"]
+        assert result["glossary_terms"][1]["term"] == "UMS"

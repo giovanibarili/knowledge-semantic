@@ -37,48 +37,48 @@ def store(chromadb_path):
 
 @pytest.fixture
 def seeded_store(store):
-    """Store pre-loaded with sample documents."""
+    """Store pre-loaded with sample documents using generic example terms."""
     store.upsert(
-        file_path="/knowledge/services/saa.md",
-        content="Simple Account Authorizer handles 5B transactions per month with p99 of 60ms.",
-        description="SAA authorization engine overview",
+        file_path="/knowledge/services/auth.md",
+        content="The auth service handles 5B requests per month with p99 of 60ms.",
+        description="auth service overview",
         category="service",
         glossary_terms=[
             {
-                "term": "SAA",
-                "aliases": ["simple-account-authorizer"],
-                "definition": "Authorization engine",
+                "term": "AUTH",
+                "aliases": ["auth-service"],
+                "definition": "Authorization service",
             },
         ],
     )
     store.upsert(
-        file_path="/knowledge/patterns/diplomat.md",
-        content="Diplomat Architecture defines layers: controller, logic, diplomat, wire.",
-        description="Diplomat Architecture layer structure",
+        file_path="/knowledge/patterns/layered.md",
+        content="Layered architecture defines tiers: controller, logic, adapter, wire.",
+        description="Layered architecture tier structure",
         category="pattern",
         glossary_terms=[
             {
-                "term": "Diplomat",
-                "aliases": ["diplomat-architecture"],
-                "definition": "Layer architecture pattern",
+                "term": "Layered",
+                "aliases": ["layered-architecture"],
+                "definition": "Tier architecture pattern",
             },
         ],
     )
     store.upsert(
         file_path="/knowledge/domain/glossary/index.md",
-        content="Glossary of domain terms: SAA, SAM, GDM, PTP, Diablo.",
+        content="Glossary of domain terms: AUTH, UMS, PMS.",
         description="Domain glossary master index",
         category="domain",
         glossary_terms=[
             {
-                "term": "SAM",
-                "aliases": ["simple-account-manager"],
-                "definition": "Account lifecycle manager",
+                "term": "UMS",
+                "aliases": ["user-management-service"],
+                "definition": "User lifecycle service",
             },
             {
-                "term": "GDM",
-                "aliases": ["global-deposits-manager"],
-                "definition": "Yield and accrual manager",
+                "term": "PMS",
+                "aliases": ["payment-management-service"],
+                "definition": "Payment processing service",
             },
         ],
     )

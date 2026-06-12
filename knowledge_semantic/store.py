@@ -12,6 +12,8 @@ from datetime import datetime
 
 import chromadb
 
+from .bm25 import BM25Store, rrf_fuse
+
 logger = logging.getLogger("knowledge_semantic")
 
 COLLECTION_NAME = "knowledge"
@@ -27,6 +29,10 @@ class KnowledgeStore:
         )
         self._client = chromadb.PersistentClient(path=path)
         self._collection = self._client.get_or_create_collection(COLLECTION_NAME)
+        # Lazy BM25 — rebuilt on first hybrid_search() call and invalidated
+        # on upsert/remove (mark-dirty pattern, keeps rebuilds amortised).
+        self._bm25_store = BM25Store(self._collection)
+        self._bm25_dirty = True
 
     def upsert(self, file_path, content, description, category, glossary_terms=None, project=None):
         """Index or update a knowledge file in ChromaDB."""
@@ -48,6 +54,8 @@ class KnowledgeStore:
             documents=[content],
             metadatas=[metadata],
         )
+        # Corpus changed — invalidate BM25 index (next hybrid_search rebuilds)
+        self._bm25_dirty = True
 
         return {
             "file_path": file_path,
@@ -97,6 +105,78 @@ class KnowledgeStore:
 
         return hits
 
+    def hybrid_search(self, query, category=None, project=None, limit=5, k=60):
+        """Hybrid retrieval = vector (semantic) + BM25 (lexical) fused via RRF.
+
+        Vector and BM25 individually shine on different query shapes:
+        - Vector finds paraphrases and conceptual matches (e.g. "how to handle
+          authentication" → "auth flow rationale").
+        - BM25 finds exact identifiers, acronyms, and kebab-case symbols
+          (e.g. ":not-empty?", "JWT", "compose-page-tree") that embeddings
+          collapse into the same neighbourhood.
+
+        Reciprocal Rank Fusion merges them at the rank level, side-stepping
+        the score-scale mismatch (cosine vs BM25). Each retriever contributes
+        up to `RETRIEVER_K=20` candidates; the fused top-`limit` is returned.
+
+        Each result is decorated with:
+          - `rrf_score`     — the fused score (higher = better)
+          - `vec_rank`      — rank in vector retriever (1-based) or None
+          - `bm25_rank`     — rank in BM25 retriever (1-based) or None
+          - `in_both`       — True if both retrievers surfaced this doc
+          - `description`, `category`, `project`  — from ChromaDB metadata
+        """
+        if not query or not query.strip():
+            return []
+
+        # Each retriever returns its own ranked list; we fuse them.
+        # Top-20 from each is the standard default in hybrid-search literature.
+        RETRIEVER_K = 20
+
+        vec_hits = self.search(
+            query=query, category=category, project=project, limit=RETRIEVER_K,
+        )
+
+        if self._bm25_dirty:
+            self._bm25_store.rebuild()
+            self._bm25_dirty = False
+        bm25_hits = self._bm25_store.search(
+            query=query, category=category, project=project, limit=RETRIEVER_K,
+        )
+
+        vec_ranks = {h["file_path"]: i + 1 for i, h in enumerate(vec_hits)}
+        bm25_ranks = {h["file_path"]: i + 1 for i, h in enumerate(bm25_hits)}
+
+        # Build a metadata lookup so the fused output preserves description /
+        # category / project from whichever retriever saw the doc.
+        meta_by_path: dict[str, dict] = {}
+        for h in vec_hits:
+            meta_by_path.setdefault(h["file_path"], h)
+        for h in bm25_hits:
+            meta_by_path.setdefault(h["file_path"], h)
+
+        # RRF — keep rrf_fuse pure (only ranks); we pair with metadata after.
+        vec_ranking = [(h["file_path"], 0.0) for h in vec_hits]
+        bm25_ranking = [(h["file_path"], 0.0) for h in bm25_hits]
+        fused = rrf_fuse(vec_ranking, bm25_ranking, k=k)
+
+        out = []
+        for fp, score in fused[:limit]:
+            meta = meta_by_path.get(fp, {})
+            hit = {
+                "file_path": fp,
+                "rrf_score": round(score, 4),
+                "vec_rank": vec_ranks.get(fp),
+                "bm25_rank": bm25_ranks.get(fp),
+                "in_both": fp in vec_ranks and fp in bm25_ranks,
+                "description": meta.get("description", ""),
+                "category": meta.get("category", ""),
+            }
+            if meta.get("project"):
+                hit["project"] = meta["project"]
+            out.append(hit)
+        return out
+
     def glossary(self, term=None):
         """List or search glossary terms across all indexed files."""
         all_docs = self._collection.get(include=["metadatas"], limit=10000)
@@ -138,6 +218,7 @@ class KnowledgeStore:
             return {"file_path": file_path, "status": "not_found"}
 
         self._collection.delete(ids=[file_path])
+        self._bm25_dirty = True
         return {"file_path": file_path, "status": "removed"}
 
     def reindex(self, directory, recursive=True):
