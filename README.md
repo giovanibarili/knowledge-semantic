@@ -16,7 +16,7 @@ But as the brain grows, a new problem emerges: finding the right file. Manual na
 
 Three layers, each with one job:
 
-**MCP Server** — a thin JSON-RPC subprocess that your LLM agent starts automatically. It owns ChromaDB and exposes 6 tools. It stores and retrieves. It never analyzes, summarizes, or decides what matters.
+**MCP Server** — a thin JSON-RPC subprocess that your LLM agent starts automatically. It owns ChromaDB and exposes tools for search, write, and domain management. It stores and retrieves. It never analyzes, summarizes, or decides what matters.
 
 **ChromaDB** — persistent vector database on disk. Each document is one markdown file, identified by its absolute path. Embeddings are computed automatically via Sentence Transformers (`all-MiniLM-L6-v2`). Survives restarts.
 
@@ -24,45 +24,86 @@ Three layers, each with one job:
 
 ## Tools
 
-### Read tools
+### Search tools
 
-**`knowledge_search`** — Semantic search across all indexed files. Returns ranked file paths with similarity scores and metadata. The LLM then reads the paths it needs.
+**`knowledge_search`** — Semantic search across all indexed files. Returns ranked file paths with similarity scores, metadata, and glossary terms. Supports `domain=` to scope results.
 
 ```
 knowledge_search(query="deployment runbook") → top 5 files ranked by relevance
+knowledge_search(query="authorization flow", domain="deposit-platform") → scoped to domain
 ```
 
-**`knowledge_glossary`** — List or search glossary terms across all indexed files. Case-insensitive substring match against terms and aliases.
+**`knowledge_hybrid_search`** — Hybrid retrieval: vector (semantic) + BM25 (lexical) fused via Reciprocal Rank Fusion. Best for exact identifiers, acronyms, and kebab-case symbols. Returns `rrf_score`, `vec_rank`, `bm25_rank`, `in_both`, and `glossary_terms`.
 
 ```
-knowledge_glossary(term="auth") → [{term, aliases, definition, source_file}]
-knowledge_glossary()            → all terms
+knowledge_hybrid_search(query=":fixed-income-br tax rule", domain="deposit-platform")
+```
+
+**`knowledge_glossary`** — List or search glossary terms across all indexed files. Returns `term`, `aliases`, `definition`, `source_file`, and `domain`.
+
+```
+knowledge_glossary(term="SAA") → [{term, aliases, definition, source_file, domain}]
+knowledge_glossary()           → all terms across all domains
 ```
 
 ### Write tools
 
-**`knowledge_index`** — Push an existing file into ChromaDB with LLM-defined metadata. Reads the file from disk, computes the embedding, stores with description, category, and glossary terms. Updates in place if already indexed.
+**`knowledge_write`** — Create or overwrite a knowledge file AND auto-index in one atomic call.
 
 ```
-knowledge_index(file_path, description, category, glossary_terms)
+knowledge_write(file_path, content, description, category, domain?, glossary_terms?)
 ```
 
-**`knowledge_write`** — Create or overwrite a knowledge file AND auto-index in one atomic call. The file is written to disk and indexed in ChromaDB in a single operation — the index can never go stale.
+**`knowledge_edit`** — Edit a knowledge file (string replacement) AND auto-re-index.
 
 ```
-knowledge_write(file_path, content, description, category, glossary_terms)
+knowledge_edit(file_path, old_string, new_string, description, category, domain?, glossary_terms?)
 ```
 
-**`knowledge_edit`** — Edit a knowledge file (string replacement) AND auto-re-index. Replaces the first occurrence of `old_string` with `new_string`, writes back, re-indexes. One call, both the file and the index stay in sync.
+**`knowledge_index`** — Index an existing file without modifying it.
 
 ```
-knowledge_edit(file_path, old_string, new_string, description, category, glossary_terms)
+knowledge_index(file_path, description, category, domain?, glossary_terms?)
 ```
 
 **`knowledge_remove`** — Remove a file from the search index.
 
 ```
 knowledge_remove(file_path)
+```
+
+**`knowledge_reindex`** — Bulk re-index a directory of markdown files. Skips files whose mtime is older than their last indexed timestamp. Pass `domain=` to resolve the directory automatically from config.
+
+```
+knowledge_reindex(domain="deposit-platform")
+knowledge_reindex(directory="/path/to/dir", recursive=True)
+```
+
+**`knowledge_status`** — Report index health: total indexed files, stale files (mtime > indexed_at), and orphaned entries (in index but deleted from disk).
+
+```
+knowledge_status() → {total_indexed, stale_count, orphaned_count, last_indexed}
+```
+
+### Domain tools
+
+**`knowledge_domains`** — List all configured domains with their paths, git URLs, and default flag.
+
+```
+knowledge_domains() → [{slug, path, knowledge_path, git_url, is_default}]
+```
+
+**`knowledge_pull`** — Run `git pull` on one or all knowledge domains.
+
+```
+knowledge_pull(domain="deposit-platform")   ← single domain
+knowledge_pull()                            ← all domains
+```
+
+**`knowledge_clone`** — Clone a domain's git repository into its configured local path. Skips silently if already cloned.
+
+```
+knowledge_clone(domain="gcm")
 ```
 
 ### Why writes go through the MCP
@@ -94,6 +135,43 @@ The server reads two environment variables:
 
 Set them in your MCP server configuration or export them before starting your LLM agent.
 
+### Multi-Domain Configuration
+
+Multiple knowledge bases (domains) are supported. Each domain has its own directory, optional git remote, and scoped search.
+
+Create `~/.jarvis/knowledge-domains.json`:
+
+```json
+{
+  "default": "personal",
+  "domains": {
+    "personal": {
+      "path": "~/dev/personal/claude-dotfiles",
+      "git_url": "https://github.com/yourname/claude-dotfiles.git",
+      "git_path": "knowledge"
+    },
+    "deposit-platform": {
+      "path": "~/dev/personal/knowledge-deposit-platform",
+      "git_url": "https://github.com/nubank/knowledge-deposit-platform.git",
+      "git_path": "."
+    },
+    "gcm": {
+      "path": "~/dev/personal/knowledge-gcm",
+      "git_url": "https://github.com/nubank/knowledge-gcm.git",
+      "git_path": "."
+    }
+  }
+}
+```
+
+Then:
+
+```
+knowledge_clone(domain="deposit-platform")
+knowledge_reindex(domain="deposit-platform")
+knowledge_search(query="SAA authorization", domain="deposit-platform")
+```
+
 ## Knowledge Structures
 
 Start with 5 files, grow to 100+. The simplest setup is a flat folder:
@@ -124,13 +202,17 @@ knowledge_semantic/
 ├── __init__.py         ← package init, exports version
 ├── __main__.py         ← entry point: python -m knowledge_semantic.mcp_server
 ├── version.py          ← single source of truth for version
-├── store.py            ← ChromaDB wrapper (upsert, search, glossary, remove)
-└── mcp_server.py       ← JSON-RPC dispatch + 6 tool handlers
+├── domains.py          ← multi-domain config (Domain, DomainRegistry, git_pull, git_clone)
+├── bm25.py             ← BM25 store with lazy rebuild + RRF fusion
+├── store.py            ← ChromaDB wrapper (upsert, search, hybrid_search, glossary, remove)
+└── mcp_server.py       ← JSON-RPC dispatch + 12 tool handlers
 
 tests/
 ├── conftest.py         ← fixtures with isolated ChromaDB instances
-├── test_store.py       ← 13 tests for the store module
-└── test_mcp_server.py  ← 19 tests for MCP protocol and tools
+├── test_store.py       ← store unit tests
+├── test_hybrid.py      ← hybrid search + RRF tests
+├── test_domains.py     ← domain registry tests
+└── test_mcp_server.py  ← MCP protocol and all tool handlers
 ```
 
 ## Development
@@ -144,7 +226,7 @@ ruff check knowledge_semantic/ tests/
 ruff format --check knowledge_semantic/ tests/
 ```
 
-32 tests covering all 6 tools, the ChromaDB store, MCP protocol dispatch, type coercion, and error paths.
+114 tests covering all 12 tools, ChromaDB store, hybrid search + RRF fusion, domain registry, MCP protocol dispatch, type coercion, and error paths.
 
 ## License
 
