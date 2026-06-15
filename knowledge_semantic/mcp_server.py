@@ -4,121 +4,178 @@ Knowledge Semantic MCP Server — semantic search over curated knowledge files.
 Install: claude mcp add knowledge-semantic -- python -m knowledge_semantic.mcp_server
 
 Tools:
-  knowledge_index     — push a file into ChromaDB with LLM-defined metadata
-  knowledge_search    — semantic search across indexed files
-  knowledge_glossary  — list or search glossary terms
-  knowledge_remove    — remove a file from the index
-  knowledge_reindex   — bulk re-index a directory of markdown files
-  knowledge_status    — report index health (stale, orphaned, totals)
+  knowledge_index          — push a file into ChromaDB with LLM-defined metadata
+  knowledge_write          — write a file to disk and auto-index
+  knowledge_edit           — edit a file (string replacement) and re-index
+  knowledge_search         — semantic search across indexed files
+  knowledge_hybrid_search  — vector + BM25 fused via RRF
+  knowledge_glossary        — list or search glossary terms
+  knowledge_remove          — remove a file from the index
+  knowledge_reindex         — bulk re-index a directory of markdown files
+  knowledge_status          — report index health (stale, orphaned, totals)
+  knowledge_domains         — list configured domains
+  knowledge_pull            — git pull one or all domains
 """
 
 import sys
 import json
 import logging
+import os
 
 from .frontmatter import extract_index_metadata
 from .store import KnowledgeStore
+from .domains import DomainRegistry, load_registry, git_pull, git_clone
 from .version import __version__
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 logger = logging.getLogger("knowledge_semantic")
 
 _store = KnowledgeStore()
+_registry: DomainRegistry = load_registry()
+
+_DOMAIN_PARAM = {
+    "type": "string",
+    "description": (
+        "Domain slug (e.g. 'personal', 'deposit-platform'). "
+        "Omit to use the default domain. "
+        "For writes, always specify the target domain explicitly."
+    ),
+}
+
+_GLOSSARY_TERMS_ITEMS = {
+    "type": "object",
+    "properties": {
+        "term": {"type": "string"},
+        "aliases": {"type": "array", "items": {"type": "string"}},
+        "definition": {"type": "string"},
+    },
+    "required": ["term"],
+}
 
 
-def tool_index(file_path, description=None, category=None, glossary_terms=None, project=None):
-    """Read a file and index it in ChromaDB with metadata.
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    If description/category are omitted, attempts to extract them from
-    YAML frontmatter in the file. Explicit parameters always take precedence.
-    """
+def _resolve_file_path(file_path: str, domain_slug: str | None) -> str:
+    """If file_path is relative, resolve against the domain's knowledge_path."""
+    if os.path.isabs(file_path):
+        return file_path
+    domain = _registry.get(domain_slug)
+    return os.path.join(domain.knowledge_path, file_path)
+
+
+def _effective_domain(domain_slug: str | None) -> str:
+    """Return the effective domain slug (explicit or default)."""
+    return domain_slug or _registry.default
+
+
+# ---------------------------------------------------------------------------
+# Tool handlers
+# ---------------------------------------------------------------------------
+
+def tool_index(file_path, description=None, category=None, glossary_terms=None,
+               project=None, domain=None):
+    """Read a file and index it in ChromaDB with metadata."""
+    domain_slug = _effective_domain(domain)
+    resolved = _resolve_file_path(file_path, domain_slug)
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(resolved, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
-        return {"error": f"File not found: {file_path}"}
+        return {"error": f"File not found: {resolved}"}
     except OSError as e:
         return {"error": f"Cannot read file: {e}"}
 
     fm = extract_index_metadata(content)
 
-    effective_desc = description or (fm.get("description") if fm else None) or file_path
+    effective_desc = description or (fm.get("description") if fm else None) or resolved
     effective_cat = category or (fm.get("category") if fm else None) or "unknown"
     effective_terms = glossary_terms or (fm.get("glossary_terms") if fm else None) or []
 
     return _store.upsert(
-        file_path=file_path,
+        file_path=resolved,
         content=content,
         description=effective_desc,
         category=effective_cat,
         glossary_terms=effective_terms,
         project=project or (fm.get("project") if fm else None),
+        domain=domain_slug,
     )
 
 
-def tool_write(file_path, content, description, category, glossary_terms=None, project=None):
+def tool_write(file_path, content, description, category, glossary_terms=None,
+               project=None, domain=None):
     """Write a knowledge file to disk and index it in ChromaDB atomically."""
-    import os
-
+    domain_slug = _effective_domain(domain)
+    resolved = _resolve_file_path(file_path, domain_slug)
     try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(resolved), exist_ok=True)
+        with open(resolved, "w", encoding="utf-8") as f:
             f.write(content)
     except OSError as e:
         return {"error": f"Cannot write file: {e}"}
 
     return _store.upsert(
-        file_path=file_path,
+        file_path=resolved,
         content=content,
         description=description,
         category=category,
         glossary_terms=glossary_terms or [],
         project=project,
+        domain=domain_slug,
     )
 
 
-def tool_edit(file_path, old_string, new_string, description, category, glossary_terms=None,
-              project=None):
+def tool_edit(file_path, old_string, new_string, description, category,
+              glossary_terms=None, project=None, domain=None):
     """Edit a knowledge file (string replacement) and re-index in ChromaDB atomically."""
+    domain_slug = _effective_domain(domain)
+    resolved = _resolve_file_path(file_path, domain_slug)
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(resolved, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
-        return {"error": f"File not found: {file_path}"}
+        return {"error": f"File not found: {resolved}"}
     except OSError as e:
         return {"error": f"Cannot read file: {e}"}
 
     if old_string not in content:
-        return {"error": f"String to replace not found in {file_path}"}
+        return {"error": f"String to replace not found in {resolved}"}
 
     new_content = content.replace(old_string, new_string, 1)
 
     try:
-        with open(file_path, "w", encoding="utf-8") as f:
+        with open(resolved, "w", encoding="utf-8") as f:
             f.write(new_content)
     except OSError as e:
         return {"error": f"Cannot write file: {e}"}
 
     return _store.upsert(
-        file_path=file_path,
+        file_path=resolved,
         content=new_content,
         description=description,
         category=category,
         glossary_terms=glossary_terms or [],
         project=project,
+        domain=domain_slug,
     )
 
 
-def tool_search(query, category=None, project=None, limit=5):
+def tool_search(query, category=None, project=None, domain=None, limit=5):
     """Semantic search across indexed knowledge files."""
-    results = _store.search(query=query, category=category, project=project, limit=limit)
+    results = _store.search(
+        query=query, category=category, project=project,
+        domain=domain, limit=limit,
+    )
     return {"query": query, "results": results, "count": len(results)}
 
 
-def tool_hybrid_search(query, category=None, project=None, limit=5):
+def tool_hybrid_search(query, category=None, project=None, domain=None, limit=5):
     """Hybrid (vector + BM25, fused via RRF) search across indexed knowledge."""
     results = _store.hybrid_search(
-        query=query, category=category, project=project, limit=limit,
+        query=query, category=category, project=project,
+        domain=domain, limit=limit,
     )
     return {"query": query, "results": results, "count": len(results)}
 
@@ -134,15 +191,67 @@ def tool_remove(file_path):
     return _store.remove(file_path)
 
 
-def tool_reindex(directory, recursive=True):
-    """Walk a directory and index/update all .md files."""
-    return _store.reindex(directory=directory, recursive=recursive)
+def tool_reindex(directory=None, domain=None, recursive=True):
+    """Walk a directory (or a domain's knowledge_path) and index/update all .md files."""
+    domain_slug = _effective_domain(domain) if domain is not None else None
+
+    if directory:
+        target_dir = directory
+        effective_domain_slug = domain_slug
+    elif domain_slug:
+        d = _registry.get(domain_slug)
+        target_dir = d.knowledge_path
+        effective_domain_slug = domain_slug
+    else:
+        # No directory and no domain — fall back to default domain
+        d = _registry.get(_registry.default)
+        target_dir = d.knowledge_path
+        effective_domain_slug = _registry.default
+
+    return _store.reindex(
+        directory=target_dir, recursive=recursive, domain=effective_domain_slug,
+    )
 
 
 def tool_status():
     """Report index health."""
     return _store.status()
 
+
+def tool_domains():
+    """List all configured knowledge domains."""
+    return {
+        "default": _registry.default,
+        "domains": _registry.list_all(),
+        "count": len(_registry.domains),
+    }
+
+
+def tool_pull(domain=None):
+    """Git pull one or all domains.
+
+    If domain is given, pulls only that domain's repo.
+    If omitted, pulls all configured domains that have a git_url.
+    """
+    if domain:
+        d = _registry.get(domain)
+        return git_pull(d)
+
+    results = []
+    for d in _registry.domains.values():
+        results.append(git_pull(d))
+    return {"results": results, "count": len(results)}
+
+
+def tool_clone(domain):
+    """Clone a domain's git_url into its configured path."""
+    d = _registry.get(domain)
+    return git_clone(d)
+
+
+# ---------------------------------------------------------------------------
+# Tool registry
+# ---------------------------------------------------------------------------
 
 TOOLS = {
     "knowledge_index": {
@@ -170,20 +279,13 @@ TOOLS = {
                 "glossary_terms": {
                     "type": "array",
                     "description": "List of glossary terms (optional — extracted from frontmatter if omitted)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "term": {"type": "string"},
-                            "aliases": {"type": "array", "items": {"type": "string"}},
-                            "definition": {"type": "string"},
-                        },
-                        "required": ["term"],
-                    },
+                    "items": _GLOSSARY_TERMS_ITEMS,
                 },
                 "project": {
                     "type": "string",
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
+                "domain": _DOMAIN_PARAM,
             },
             "required": ["file_path"],
         },
@@ -217,20 +319,13 @@ TOOLS = {
                 "glossary_terms": {
                     "type": "array",
                     "description": "List of glossary terms found in the file",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "term": {"type": "string"},
-                            "aliases": {"type": "array", "items": {"type": "string"}},
-                            "definition": {"type": "string"},
-                        },
-                        "required": ["term"],
-                    },
+                    "items": _GLOSSARY_TERMS_ITEMS,
                 },
                 "project": {
                     "type": "string",
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
+                "domain": _DOMAIN_PARAM,
             },
             "required": ["file_path", "content", "description", "category"],
         },
@@ -268,20 +363,13 @@ TOOLS = {
                 "glossary_terms": {
                     "type": "array",
                     "description": "List of glossary terms found in the file",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "term": {"type": "string"},
-                            "aliases": {"type": "array", "items": {"type": "string"}},
-                            "definition": {"type": "string"},
-                        },
-                        "required": ["term"],
-                    },
+                    "items": _GLOSSARY_TERMS_ITEMS,
                 },
                 "project": {
                     "type": "string",
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
+                "domain": _DOMAIN_PARAM,
             },
             "required": ["file_path", "old_string", "new_string", "description", "category"],
         },
@@ -291,7 +379,8 @@ TOOLS = {
         "description": (
             "Semantic search across all indexed knowledge files. "
             "Returns ranked file paths with similarity scores and metadata. "
-            "Use Read tool on returned paths to get full content."
+            "Use Read tool on returned paths to get full content. "
+            "Omit domain to search cross-domain (all)."
         ),
         "input_schema": {
             "type": "object",
@@ -308,6 +397,10 @@ TOOLS = {
                     "type": "string",
                     "description": "Filter results to a specific project/repo (optional — omit to search all)",
                 },
+                "domain": {
+                    **_DOMAIN_PARAM,
+                    "description": "Filter to a specific domain (optional — omit for cross-domain search)",
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max results to return (default 5)",
@@ -322,12 +415,9 @@ TOOLS = {
             "Hybrid semantic + lexical (BM25) search across indexed knowledge files. "
             "Vector retrieves paraphrases and conceptual matches; BM25 retrieves exact "
             "identifiers, acronyms, and kebab-case symbols. Results are fused via "
-            "Reciprocal Rank Fusion (RRF) — robust to score-scale mismatch. Each hit "
-            "is decorated with rrf_score, vec_rank, bm25_rank, and an in_both flag "
-            "(True when both retrievers agreed). Prefer this over knowledge_search "
-            "when the query mixes prose with exact names (e.g. 'how compose-page-tree "
-            "dispatches'), or when knowledge_search returns weak (similarity < 0.3) "
-            "top hits."
+            "Reciprocal Rank Fusion (RRF). Each hit is decorated with rrf_score, "
+            "vec_rank, bm25_rank, and an in_both flag. "
+            "Omit domain to search cross-domain (all)."
         ),
         "input_schema": {
             "type": "object",
@@ -343,6 +433,10 @@ TOOLS = {
                 "project": {
                     "type": "string",
                     "description": "Filter results to a specific project/repo (optional)",
+                },
+                "domain": {
+                    **_DOMAIN_PARAM,
+                    "description": "Filter to a specific domain (optional — omit for cross-domain search)",
                 },
                 "limit": {
                     "type": "integer",
@@ -386,7 +480,8 @@ TOOLS = {
     "knowledge_reindex": {
         "description": (
             "Bulk re-index a directory of markdown files. "
-            "Walks the directory, reads each .md file, and indexes or updates it in ChromaDB. "
+            "Pass domain to resolve the directory from the domain config automatically. "
+            "Pass directory for an explicit path. "
             "Skips files whose mtime is older than their last indexed timestamp. "
             "Use after git pull, branch switch, or to bootstrap a new knowledge base."
         ),
@@ -395,14 +490,17 @@ TOOLS = {
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "Absolute path to the directory to scan for .md files",
+                    "description": "Absolute path to the directory to scan (optional — resolved from domain if omitted)",
+                },
+                "domain": {
+                    **_DOMAIN_PARAM,
+                    "description": "Domain to reindex (resolves directory from config). Omit if providing directory.",
                 },
                 "recursive": {
                     "type": "boolean",
                     "description": "Walk subdirectories recursively (default true)",
                 },
             },
-            "required": ["directory"],
         },
         "handler": tool_reindex,
     },
@@ -418,8 +516,57 @@ TOOLS = {
         },
         "handler": tool_status,
     },
+    "knowledge_domains": {
+        "description": (
+            "List all configured knowledge domains with their paths, git URLs, and default flag. "
+            "Use to discover available domains before write/reindex operations."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+        "handler": tool_domains,
+    },
+    "knowledge_pull": {
+        "description": (
+            "Run git pull on one or all knowledge domains. "
+            "Pass domain slug to pull a single domain; omit to pull all. "
+            "Returns pull status per domain. Use before reindex to get latest content."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "description": "Domain slug to pull (optional — omits pulls all domains)",
+                },
+            },
+        },
+        "handler": tool_pull,
+    },
+    "knowledge_clone": {
+        "description": (
+            "Clone a domain's git repository into its configured local path. "
+            "Skips silently if already cloned. Requires git_url in domain config."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "description": "Domain slug to clone",
+                },
+            },
+            "required": ["domain"],
+        },
+        "handler": tool_clone,
+    },
 }
 
+
+# ---------------------------------------------------------------------------
+# JSON-RPC loop
+# ---------------------------------------------------------------------------
 
 def handle_request(request):
     """Route a JSON-RPC request to the appropriate handler."""
@@ -494,6 +641,7 @@ def handle_request(request):
 def main():
     """MCP server main loop — read JSON-RPC from stdin, write responses to stdout."""
     logger.info("Knowledge Semantic MCP Server starting...")
+    logger.info(f"Domains: {list(_registry.domains.keys())} (default: {_registry.default})")
     while True:
         try:
             line = sys.stdin.readline()

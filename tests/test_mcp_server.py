@@ -41,6 +41,9 @@ class TestProtocol:
             "knowledge_remove",
             "knowledge_reindex",
             "knowledge_status",
+            "knowledge_domains",
+            "knowledge_pull",
+            "knowledge_clone",
         }
 
     def test_unknown_tool(self):

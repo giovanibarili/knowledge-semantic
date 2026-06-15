@@ -34,7 +34,8 @@ class KnowledgeStore:
         self._bm25_store = BM25Store(self._collection)
         self._bm25_dirty = True
 
-    def upsert(self, file_path, content, description, category, glossary_terms=None, project=None):
+    def upsert(self, file_path, content, description, category, glossary_terms=None,
+               project=None, domain=None):
         """Index or update a knowledge file in ChromaDB."""
         terms = glossary_terms or []
         existing = self._collection.get(ids=[file_path])
@@ -48,6 +49,8 @@ class KnowledgeStore:
         }
         if project:
             metadata["project"] = project
+        if domain:
+            metadata["domain"] = domain
 
         self._collection.upsert(
             ids=[file_path],
@@ -61,9 +64,10 @@ class KnowledgeStore:
             "file_path": file_path,
             "terms_indexed": len(terms),
             "status": "updated" if is_update else "created",
+            **({"domain": domain} if domain else {}),
         }
 
-    def search(self, query, category=None, project=None, limit=5):
+    def search(self, query, category=None, project=None, domain=None, limit=5):
         """Semantic search across indexed knowledge files."""
         kwargs = {
             "query_texts": [query],
@@ -75,6 +79,8 @@ class KnowledgeStore:
             where_clauses.append({"category": category})
         if project:
             where_clauses.append({"project": project})
+        if domain:
+            where_clauses.append({"domain": domain})
 
         if len(where_clauses) == 1:
             kwargs["where"] = where_clauses[0]
@@ -101,11 +107,13 @@ class KnowledgeStore:
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
+            if meta.get("domain"):
+                hit["domain"] = meta["domain"]
             hits.append(hit)
 
         return hits
 
-    def hybrid_search(self, query, category=None, project=None, limit=5, k=60):
+    def hybrid_search(self, query, category=None, project=None, domain=None, limit=5, k=60):
         """Hybrid retrieval = vector (semantic) + BM25 (lexical) fused via RRF.
 
         Vector and BM25 individually shine on different query shapes:
@@ -134,14 +142,14 @@ class KnowledgeStore:
         RETRIEVER_K = 20
 
         vec_hits = self.search(
-            query=query, category=category, project=project, limit=RETRIEVER_K,
+            query=query, category=category, project=project, domain=domain, limit=RETRIEVER_K,
         )
 
         if self._bm25_dirty:
             self._bm25_store.rebuild()
             self._bm25_dirty = False
         bm25_hits = self._bm25_store.search(
-            query=query, category=category, project=project, limit=RETRIEVER_K,
+            query=query, category=category, project=project, domain=domain, limit=RETRIEVER_K,
         )
 
         vec_ranks = {h["file_path"]: i + 1 for i, h in enumerate(vec_hits)}
@@ -174,6 +182,8 @@ class KnowledgeStore:
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
+            if meta.get("domain"):
+                hit["domain"] = meta["domain"]
             out.append(hit)
         return out
 
@@ -221,7 +231,7 @@ class KnowledgeStore:
         self._bm25_dirty = True
         return {"file_path": file_path, "status": "removed"}
 
-    def reindex(self, directory, recursive=True):
+    def reindex(self, directory, recursive=True, domain=None):
         """Walk a directory and index/update all .md files.
 
         Files are indexed with minimal metadata (description from first line,
@@ -283,6 +293,7 @@ class KnowledgeStore:
                     description=description,
                     category="unknown",
                     glossary_terms=[],
+                    domain=domain,
                 )
                 indexed.append(abs_path)
 

@@ -167,9 +167,10 @@ class BM25Store:
         self._bm25 = BM25Okapi(corpus_tokens) if corpus_tokens else None
 
     def search(self, query: str, category: str | None = None,
-               project: str | None = None, limit: int = 20) -> list[dict]:
+               project: str | None = None, domain: str | None = None,
+               limit: int = 20) -> list[dict]:
         """Return up to `limit` documents matching `query`, filtered by
-        category/project. Documents with zero token overlap are dropped.
+        category/project/domain. Documents with zero token overlap are dropped.
 
         Each hit is decorated with the BM25 score and the original ChromaDB
         metadata. See class docstring for the overlap-gating rationale.
@@ -202,6 +203,8 @@ class BM25Store:
                 continue
             if project and meta.get("project") != project:
                 continue
+            if domain and meta.get("domain") != domain:
+                continue
             hit = {
                 "file_path": fp,
                 "bm25_score": round(score, 3),
@@ -210,6 +213,8 @@ class BM25Store:
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
+            if meta.get("domain"):
+                hit["domain"] = meta["domain"]
             out.append(hit)
             if len(out) >= limit:
                 break
