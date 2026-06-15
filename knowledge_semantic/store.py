@@ -19,6 +19,25 @@ logger = logging.getLogger("knowledge_semantic")
 COLLECTION_NAME = "knowledge"
 
 
+def _parse_glossary_terms(raw):
+    """Parse glossary_terms from ChromaDB metadata.
+
+    ChromaDB stores metadata values as strings, so glossary_terms is stored
+    as a JSON-encoded string. However, in-memory test collections may store
+    the value as a list directly. This helper handles both cases defensively.
+    """
+    if isinstance(raw, list):
+        return raw
+    try:
+        parsed = json.loads(raw)
+        # Unwrap multiply-encoded JSON strings
+        while isinstance(parsed, str):
+            parsed = json.loads(parsed)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 class KnowledgeStore:
     """Wrapper around ChromaDB for knowledge file storage and retrieval."""
 
@@ -103,7 +122,7 @@ class KnowledgeStore:
                 "similarity_score": round(1 - dist, 3),
                 "description": meta.get("description", ""),
                 "category": meta.get("category", ""),
-                "glossary_terms": json.loads(meta.get("glossary_terms", "[]")),
+                "glossary_terms": _parse_glossary_terms(meta.get("glossary_terms", "[]")),
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
@@ -179,6 +198,7 @@ class KnowledgeStore:
                 "in_both": fp in vec_ranks and fp in bm25_ranks,
                 "description": meta.get("description", ""),
                 "category": meta.get("category", ""),
+                "glossary_terms": _parse_glossary_terms(meta.get("glossary_terms", "[]")),
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
@@ -193,14 +213,7 @@ class KnowledgeStore:
 
         terms = []
         for file_path, meta in zip(all_docs["ids"], all_docs["metadatas"]):
-            raw = meta.get("glossary_terms", "[]")
-            try:
-                stored_terms = json.loads(raw)
-                # Unwrap multiply-encoded JSON strings
-                while isinstance(stored_terms, str):
-                    stored_terms = json.loads(stored_terms)
-            except (json.JSONDecodeError, TypeError):
-                continue
+            stored_terms = _parse_glossary_terms(meta.get("glossary_terms", "[]"))
             for t in stored_terms:
                 if not isinstance(t, dict):
                     continue
@@ -210,6 +223,8 @@ class KnowledgeStore:
                     "definition": t.get("definition", ""),
                     "source_file": file_path,
                 }
+                if meta.get("domain"):
+                    entry["domain"] = meta["domain"]
                 if term:
                     search_lower = term.lower()
                     if search_lower in t["term"].lower() or any(
