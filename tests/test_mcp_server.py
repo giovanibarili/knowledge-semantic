@@ -106,7 +106,7 @@ class TestKnowledgeIndex:
 
         test_file = os.path.join(tmp_dir, "fm.md")
         with open(test_file, "w") as f:
-            f.write("---\ndescription: Diplomat architecture\ncategory: pattern\n---\n\n# Diplomat\nLayers.")
+            f.write("---\ndescription: Layered architecture\ncategory: pattern\n---\n\n# Layered\nLayers.")
 
         resp = handle_request(
             {
@@ -128,13 +128,13 @@ class TestKnowledgeIndex:
                 "id": 13,
                 "params": {
                     "name": "knowledge_search",
-                    "arguments": {"query": "Diplomat architecture"},
+                    "arguments": {"query": "Layered architecture"},
                 },
             }
         )
         results = json.loads(search_resp["result"]["content"][0]["text"])
         top = results["results"][0]
-        assert top["description"] == "Diplomat architecture"
+        assert top["description"] == "Layered architecture"
         assert top["category"] == "pattern"
 
     def test_index_explicit_overrides_frontmatter(self, monkeypatch, store, tmp_dir):
