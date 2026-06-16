@@ -13,6 +13,7 @@ from datetime import datetime
 import chromadb
 
 from .bm25 import BM25Store, rrf_fuse
+from .frontmatter import extract_index_metadata, parse_frontmatter
 
 logger = logging.getLogger("knowledge_semantic")
 
@@ -85,6 +86,22 @@ class KnowledgeStore:
             "status": "updated" if is_update else "created",
             **({"domain": domain} if domain else {}),
         }
+
+    def indexed_at(self, file_path):
+        """Return the stored indexed_at timestamp (epoch seconds) for a file.
+
+        Returns None if the file is not indexed or has no parseable timestamp.
+        Lets external callers replicate the mtime-skip logic without reaching
+        into the collection directly.
+        """
+        existing = self._collection.get(ids=[file_path])
+        if not existing["ids"]:
+            return None
+        stamp = existing["metadatas"][0].get("indexed_at", "")
+        try:
+            return datetime.fromisoformat(stamp).timestamp() if stamp else None
+        except ValueError:
+            return None
 
     def search(self, query, category=None, project=None, domain=None, limit=5):
         """Semantic search across indexed knowledge files."""
@@ -249,9 +266,11 @@ class KnowledgeStore:
     def reindex(self, directory, recursive=True, domain=None):
         """Walk a directory and index/update all .md files.
 
-        Files are indexed with minimal metadata (description from first line,
-        category "unknown"). Files already indexed whose mtime is older than
-        indexed_at are skipped.
+        Metadata (description, category, project, glossary_terms) is read from
+        each file's YAML frontmatter via extract_index_metadata. Files without
+        frontmatter fall back to description from the first prose line (the
+        frontmatter block itself is skipped) and category "unknown". Files
+        already indexed whose mtime is older than indexed_at are skipped.
 
         Returns counts of indexed, skipped, and errored files.
         """
@@ -294,20 +313,23 @@ class KnowledgeStore:
                     errors.append({"file_path": abs_path, "reason": str(e)})
                     continue
 
+                fm = extract_index_metadata(content) or {}
+                _meta, body = parse_frontmatter(content)
                 first_line = ""
-                for line in content.splitlines():
+                for line in body.splitlines():
                     stripped = line.strip().lstrip("#").strip()
                     if stripped:
                         first_line = stripped
                         break
-                description = first_line[:200] if first_line else fname
+                description = fm.get("description") or (first_line[:200] if first_line else fname)
 
                 self.upsert(
                     file_path=abs_path,
                     content=content,
                     description=description,
-                    category="unknown",
-                    glossary_terms=[],
+                    category=fm.get("category", "unknown"),
+                    glossary_terms=fm.get("glossary_terms", []),
+                    project=fm.get("project"),
                     domain=domain,
                 )
                 indexed.append(abs_path)

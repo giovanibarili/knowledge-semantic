@@ -44,15 +44,15 @@ Body.
     def test_frontmatter_with_multiline_description(self):
         content = """---
 description: >
-  HOF+Registry pattern for multi-provider support.
-  Rejected Protocol approach due to coupling.
+  Strategy pattern for multi-backend support.
+  Rejected inheritance approach due to coupling.
 category: decisions
 ---
 
 Body.
 """
         meta, _body = parse_frontmatter(content)
-        assert "HOF+Registry" in meta["description"]
+        assert "Strategy pattern" in meta["description"]
         assert "coupling" in meta["description"]
 
     def test_frontmatter_with_project(self):
