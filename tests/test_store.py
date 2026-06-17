@@ -338,3 +338,64 @@ class TestProjectScoping:
         )
         results = store.search("global knowledge")
         assert "project" not in results[0]
+
+
+class TestOkfTypeDimension:
+    """The OKF `type` dimension coexists with category/project/domain."""
+
+    def test_upsert_and_filter_by_type(self, store):
+        store.upsert(
+            file_path="/knowledge/pat.md",
+            content="A reusable design pattern about retries.",
+            description="Retry pattern",
+            category="pattern",
+            type="Pattern",
+        )
+        store.upsert(
+            file_path="/knowledge/svc.md",
+            content="A service about retries and backoff.",
+            description="Retry service",
+            category="service",
+            type="Service",
+        )
+
+        results = store.search("retries", type="Pattern")
+        paths = [r["file_path"] for r in results]
+        assert "/knowledge/pat.md" in paths
+        assert "/knowledge/svc.md" not in paths
+
+    def test_search_result_includes_type(self, store):
+        store.upsert(
+            file_path="/knowledge/typed.md",
+            content="Typed content.",
+            description="Typed file",
+            category="service",
+            type="Runbook",
+        )
+        results = store.search("typed content")
+        assert results[0]["type"] == "Runbook"
+
+    def test_reindex_skips_reserved_files(self, store, tmp_dir):
+        import os
+
+        with open(os.path.join(tmp_dir, "concept.md"), "w") as f:
+            f.write("# Concept\nA real concept document.")
+        # OKF reserved — directory listing / change history, not concepts
+        with open(os.path.join(tmp_dir, "index.md"), "w") as f:
+            f.write("# Index\nDirectory listing.")
+        with open(os.path.join(tmp_dir, "log.md"), "w") as f:
+            f.write("# Log\nChange history.")
+
+        result = store.reindex(tmp_dir)
+        assert result["indexed"] == 1
+
+    def test_reindex_reads_type_from_frontmatter(self, store, tmp_dir):
+        import os
+
+        fpath = os.path.join(tmp_dir, "fm-typed.md")
+        with open(fpath, "w") as f:
+            f.write("---\ndescription: A runbook\ncategory: operations\ntype: Runbook\n---\n\n# Runbook\nSteps.")
+
+        store.reindex(tmp_dir)
+        results = store.search("runbook steps", type="Runbook")
+        assert any(r["file_path"].endswith("fm-typed.md") for r in results)

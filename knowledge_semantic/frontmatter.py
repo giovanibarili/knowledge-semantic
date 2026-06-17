@@ -132,7 +132,7 @@ def _parse_yaml_block(block):
 def extract_index_metadata(content):
     """Extract indexing metadata from file content with frontmatter.
 
-    Returns a dict with keys: description, category, glossary_terms, project.
+    Returns a dict with keys: description, category, glossary_terms, project, type.
     Only includes keys that were found in the frontmatter.
     Returns None if no frontmatter is present.
     """
@@ -150,6 +150,9 @@ def extract_index_metadata(content):
 
     if "project" in metadata and metadata["project"]:
         result["project"] = metadata["project"]
+
+    if "type" in metadata and metadata["type"]:
+        result["type"] = metadata["type"]
 
     if "glossary_terms" in metadata:
         terms = metadata["glossary_terms"]

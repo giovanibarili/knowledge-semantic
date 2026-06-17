@@ -42,6 +42,14 @@ _DOMAIN_PARAM = {
     ),
 }
 
+_TYPE_PARAM = {
+    "type": "string",
+    "description": (
+        "OKF artifact type (open vocabulary, e.g. Pattern, Service, Runbook, "
+        "Concept, Reference). Optional — extracted from frontmatter if omitted."
+    ),
+}
+
 _GLOSSARY_TERMS_ITEMS = {
     "type": "object",
     "properties": {
@@ -75,7 +83,7 @@ def _effective_domain(domain_slug: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 def tool_index(file_path, description=None, category=None, glossary_terms=None,
-               project=None, domain=None):
+               project=None, domain=None, type=None):
     """Read a file and index it in ChromaDB with metadata."""
     domain_slug = _effective_domain(domain)
     resolved = _resolve_file_path(file_path, domain_slug)
@@ -92,6 +100,7 @@ def tool_index(file_path, description=None, category=None, glossary_terms=None,
     effective_desc = description or (fm.get("description") if fm else None) or resolved
     effective_cat = category or (fm.get("category") if fm else None) or "unknown"
     effective_terms = glossary_terms or (fm.get("glossary_terms") if fm else None) or []
+    effective_type = type or (fm.get("type") if fm else None)
 
     return _store.upsert(
         file_path=resolved,
@@ -101,11 +110,12 @@ def tool_index(file_path, description=None, category=None, glossary_terms=None,
         glossary_terms=effective_terms,
         project=project or (fm.get("project") if fm else None),
         domain=domain_slug,
+        type=effective_type,
     )
 
 
 def tool_write(file_path, content, description, category, glossary_terms=None,
-               project=None, domain=None):
+               project=None, domain=None, type=None):
     """Write a knowledge file to disk and index it in ChromaDB atomically."""
     domain_slug = _effective_domain(domain)
     resolved = _resolve_file_path(file_path, domain_slug)
@@ -124,11 +134,12 @@ def tool_write(file_path, content, description, category, glossary_terms=None,
         glossary_terms=glossary_terms or [],
         project=project,
         domain=domain_slug,
+        type=type,
     )
 
 
 def tool_edit(file_path, old_string, new_string, description, category,
-              glossary_terms=None, project=None, domain=None):
+              glossary_terms=None, project=None, domain=None, type=None):
     """Edit a knowledge file (string replacement) and re-index in ChromaDB atomically."""
     domain_slug = _effective_domain(domain)
     resolved = _resolve_file_path(file_path, domain_slug)
@@ -159,23 +170,24 @@ def tool_edit(file_path, old_string, new_string, description, category,
         glossary_terms=glossary_terms or [],
         project=project,
         domain=domain_slug,
+        type=type,
     )
 
 
-def tool_search(query, category=None, project=None, domain=None, limit=5):
+def tool_search(query, category=None, project=None, domain=None, type=None, limit=5):
     """Semantic search across indexed knowledge files."""
     results = _store.search(
         query=query, category=category, project=project,
-        domain=domain, limit=limit,
+        domain=domain, type=type, limit=limit,
     )
     return {"query": query, "results": results, "count": len(results)}
 
 
-def tool_hybrid_search(query, category=None, project=None, domain=None, limit=5):
+def tool_hybrid_search(query, category=None, project=None, domain=None, type=None, limit=5):
     """Hybrid (vector + BM25, fused via RRF) search across indexed knowledge."""
     results = _store.hybrid_search(
         query=query, category=category, project=project,
-        domain=domain, limit=limit,
+        domain=domain, type=type, limit=limit,
     )
     return {"query": query, "results": results, "count": len(results)}
 
@@ -286,6 +298,7 @@ TOOLS = {
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
                 "domain": _DOMAIN_PARAM,
+                "type": _TYPE_PARAM,
             },
             "required": ["file_path"],
         },
@@ -326,6 +339,7 @@ TOOLS = {
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
                 "domain": _DOMAIN_PARAM,
+                "type": _TYPE_PARAM,
             },
             "required": ["file_path", "content", "description", "category"],
         },
@@ -370,6 +384,7 @@ TOOLS = {
                     "description": "Project/repo name for scoping (optional — omit for global knowledge)",
                 },
                 "domain": _DOMAIN_PARAM,
+                "type": _TYPE_PARAM,
             },
             "required": ["file_path", "old_string", "new_string", "description", "category"],
         },
@@ -400,6 +415,10 @@ TOOLS = {
                 "domain": {
                     **_DOMAIN_PARAM,
                     "description": "Filter to a specific domain (optional — omit for cross-domain search)",
+                },
+                "type": {
+                    **_TYPE_PARAM,
+                    "description": "Filter results to a specific OKF type (optional)",
                 },
                 "limit": {
                     "type": "integer",
@@ -437,6 +456,10 @@ TOOLS = {
                 "domain": {
                     **_DOMAIN_PARAM,
                     "description": "Filter to a specific domain (optional — omit for cross-domain search)",
+                },
+                "type": {
+                    **_TYPE_PARAM,
+                    "description": "Filter results to a specific OKF type (optional)",
                 },
                 "limit": {
                     "type": "integer",
