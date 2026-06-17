@@ -19,6 +19,10 @@ logger = logging.getLogger("knowledge_semantic")
 
 COLLECTION_NAME = "knowledge"
 
+# OKF reserved filenames — directory listings / change history, not concepts.
+# Skipped by reindex so they never enter the search corpus.
+_RESERVED_FILES = {"index.md", "log.md"}
+
 
 def _parse_glossary_terms(raw):
     """Parse glossary_terms from ChromaDB metadata.
@@ -55,8 +59,13 @@ class KnowledgeStore:
         self._bm25_dirty = True
 
     def upsert(self, file_path, content, description, category, glossary_terms=None,
-               project=None, domain=None):
-        """Index or update a knowledge file in ChromaDB."""
+               project=None, domain=None, type=None):
+        """Index or update a knowledge file in ChromaDB.
+
+        `type` is the OKF artifact kind (open vocabulary, e.g. Pattern,
+        Service, Runbook). It is stored as a filterable metadata field
+        alongside `category` (the closed enum) and coexists with `domain`.
+        """
         terms = glossary_terms or []
         existing = self._collection.get(ids=[file_path])
         is_update = len(existing["ids"]) > 0
@@ -71,6 +80,8 @@ class KnowledgeStore:
             metadata["project"] = project
         if domain:
             metadata["domain"] = domain
+        if type:
+            metadata["type"] = type
 
         self._collection.upsert(
             ids=[file_path],
@@ -103,7 +114,7 @@ class KnowledgeStore:
         except ValueError:
             return None
 
-    def search(self, query, category=None, project=None, domain=None, limit=5):
+    def search(self, query, category=None, project=None, domain=None, type=None, limit=5):
         """Semantic search across indexed knowledge files."""
         kwargs = {
             "query_texts": [query],
@@ -117,6 +128,8 @@ class KnowledgeStore:
             where_clauses.append({"project": project})
         if domain:
             where_clauses.append({"domain": domain})
+        if type:
+            where_clauses.append({"type": type})
 
         if len(where_clauses) == 1:
             kwargs["where"] = where_clauses[0]
@@ -139,6 +152,7 @@ class KnowledgeStore:
                 "similarity_score": round(1 - dist, 3),
                 "description": meta.get("description", ""),
                 "category": meta.get("category", ""),
+                "type": meta.get("type", ""),
                 "glossary_terms": _parse_glossary_terms(meta.get("glossary_terms", "[]")),
             }
             if meta.get("project"):
@@ -149,7 +163,8 @@ class KnowledgeStore:
 
         return hits
 
-    def hybrid_search(self, query, category=None, project=None, domain=None, limit=5, k=60):
+    def hybrid_search(self, query, category=None, project=None, domain=None, type=None,
+                      limit=5, k=60):
         """Hybrid retrieval = vector (semantic) + BM25 (lexical) fused via RRF.
 
         Vector and BM25 individually shine on different query shapes:
@@ -178,14 +193,16 @@ class KnowledgeStore:
         RETRIEVER_K = 20
 
         vec_hits = self.search(
-            query=query, category=category, project=project, domain=domain, limit=RETRIEVER_K,
+            query=query, category=category, project=project, domain=domain, type=type,
+            limit=RETRIEVER_K,
         )
 
         if self._bm25_dirty:
             self._bm25_store.rebuild()
             self._bm25_dirty = False
         bm25_hits = self._bm25_store.search(
-            query=query, category=category, project=project, domain=domain, limit=RETRIEVER_K,
+            query=query, category=category, project=project, domain=domain, type=type,
+            limit=RETRIEVER_K,
         )
 
         vec_ranks = {h["file_path"]: i + 1 for i, h in enumerate(vec_hits)}
@@ -215,6 +232,7 @@ class KnowledgeStore:
                 "in_both": fp in vec_ranks and fp in bm25_ranks,
                 "description": meta.get("description", ""),
                 "category": meta.get("category", ""),
+                "type": meta.get("type", ""),
                 "glossary_terms": _parse_glossary_terms(meta.get("glossary_terms", "[]")),
             }
             if meta.get("project"):
@@ -285,6 +303,10 @@ class KnowledgeStore:
             for fname in sorted(files):
                 if not fname.endswith(".md"):
                     continue
+                if fname in _RESERVED_FILES:
+                    # OKF reserved (directory listing / change history) — not a
+                    # concept document, so it never enters the search corpus.
+                    continue
                 fpath = os.path.join(root, fname)
                 abs_path = os.path.abspath(fpath)
 
@@ -331,6 +353,7 @@ class KnowledgeStore:
                     glossary_terms=fm.get("glossary_terms", []),
                     project=fm.get("project"),
                     domain=domain,
+                    type=fm.get("type"),
                 )
                 indexed.append(abs_path)
 

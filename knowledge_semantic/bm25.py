@@ -168,9 +168,9 @@ class BM25Store:
 
     def search(self, query: str, category: str | None = None,
                project: str | None = None, domain: str | None = None,
-               limit: int = 20) -> list[dict]:
+               type: str | None = None, limit: int = 20) -> list[dict]:
         """Return up to `limit` documents matching `query`, filtered by
-        category/project/domain. Documents with zero token overlap are dropped.
+        category/project/domain/type. Documents with zero token overlap are dropped.
 
         Each hit is decorated with the BM25 score and the original ChromaDB
         metadata. See class docstring for the overlap-gating rationale.
@@ -205,11 +205,14 @@ class BM25Store:
                 continue
             if domain and meta.get("domain") != domain:
                 continue
+            if type and meta.get("type") != type:
+                continue
             hit = {
                 "file_path": fp,
                 "bm25_score": round(score, 3),
                 "description": meta.get("description", ""),
                 "category": meta.get("category", ""),
+                "type": meta.get("type", ""),
             }
             if meta.get("project"):
                 hit["project"] = meta["project"]
